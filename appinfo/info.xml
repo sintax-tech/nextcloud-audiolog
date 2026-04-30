@@ -37,9 +37,9 @@
     <bugs>https://github.com/sintax-tech/nextcloud-audiolog/issues</bugs>
     <repository type="git">https://github.com/sintax-tech/nextcloud-audiolog.git</repository>
     <screenshot>https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/docs/screenshots/01-record.png</screenshot>
-    <screenshot>https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/docs/screenshots/02-live.png</screenshot>
-    <screenshot>https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/docs/screenshots/03-result.png</screenshot>
-    <screenshot>https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/docs/screenshots/04-admin.png</screenshot>
+    <screenshot>https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/docs/screenshots/02-live-running.png</screenshot>
+    <screenshot>https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/docs/screenshots/03-recordings.png</screenshot>
+    <screenshot>https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/docs/screenshots/04-live-setup.png</screenshot>
     <dependencies>
         <php min-version="8.1"/>
         <nextcloud min-version="28" max-version="33"/>
