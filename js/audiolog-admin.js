@@ -188,25 +188,33 @@
             const allowedGroupsSelect = document.getElementById('allowed_groups');
             const allowedGroups = Array.from(allowedGroupsSelect.selectedOptions).map(opt => opt.value);
 
+            // Helpers: tolerate fields that may have been removed from the
+            // template (e.g. Gemini-only knobs hidden when a different
+            // provider is active). Without these guards, getElementById('x')
+            // returning null trips a TypeError on `.value`/`.checked` and the
+            // submit silently freezes on "Saving...".
+            const val = (id, fallback = '') => document.getElementById(id)?.value ?? fallback;
+            const checked = (id) => document.getElementById(id)?.checked ? 'true' : 'false';
+
             const formData = {
                 ai_provider: providerSelect.value,
                 ai_url: urlInput.value,
                 api_key: apiKeyInput.value,
                 ai_model: modelInput.value,
-                language: document.getElementById('language').value,
-                max_file_size: document.getElementById('max_file_size').value,
-                save_audio: document.getElementById('save_audio').checked ? 'true' : 'false',
-                default_output: document.getElementById('default_output').value,
+                language: val('language', 'pt'),
+                max_file_size: val('max_file_size', '100'),
+                save_audio: checked('save_audio'),
+                default_output: val('default_output', 'transcricao'),
                 allowed_groups: allowedGroups,
-                gemini_files_api_threshold: document.getElementById('gemini_files_api_threshold').value,
-                gemini_files_api_force: document.getElementById('gemini_files_api_force').checked ? 'true' : 'false',
-                long_audio_split_threshold: document.getElementById('long_audio_split_threshold').value,
-                enable_realtime_stt: document.getElementById('enable_realtime_stt').checked ? 'true' : 'false',
-                realtime_stt_provider: document.getElementById('realtime_stt_provider').value,
-                realtime_stt_model: document.getElementById('realtime_stt_model').value,
-                use_google_stt_for_transcription: document.getElementById('use_google_stt_for_transcription')?.checked ? 'true' : 'false',
-                google_stt_api_key: document.getElementById('google_stt_api_key')?.value || '',
-                analysis_model: document.getElementById('analysis_model')?.value || ''
+                gemini_files_api_threshold: val('gemini_files_api_threshold', '18'),
+                gemini_files_api_force: checked('gemini_files_api_force'),
+                long_audio_split_threshold: val('long_audio_split_threshold', '25'),
+                enable_realtime_stt: checked('enable_realtime_stt'),
+                realtime_stt_provider: val('realtime_stt_provider', 'web-speech'),
+                realtime_stt_model: val('realtime_stt_model', ''),
+                use_google_stt_for_transcription: checked('use_google_stt_for_transcription'),
+                google_stt_api_key: val('google_stt_api_key', ''),
+                analysis_model: val('analysis_model', '')
             };
 
             try {
