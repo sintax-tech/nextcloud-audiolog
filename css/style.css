@@ -1,0 +1,1987 @@
+/**
+ * Reuniao com IA - Styles
+ * Following Nextcloud design guidelines
+ * @copyright 2025 Jhonatan Jaworski
+ */
+
+/* ========================================
+   App Content - Full Width Layout
+   ======================================== */
+
+#app-content {
+    overflow-y: auto;
+    position: relative;
+    height: 100%;
+}
+
+#app-content-wrapper {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+}
+
+/* ========================================
+   SVG Icons - Inline
+   ======================================== */
+
+.header-icon svg,
+.section-icon svg,
+.btn-icon svg,
+.upload-icon svg,
+.file-icon svg,
+.type-icon svg {
+    display: block;
+    fill: currentColor;
+}
+
+.header-icon svg {
+    width: 32px;
+    height: 32px;
+}
+
+.section-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.btn-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.upload-icon svg {
+    width: 48px;
+    height: 48px;
+    opacity: 0.5;
+}
+
+.file-icon svg {
+    width: 24px;
+    height: 24px;
+}
+
+.type-icon svg {
+    width: 28px;
+    height: 28px;
+}
+
+/* ========================================
+   Main Content Area
+   ======================================== */
+
+.reuniao-main {
+    flex: 1;
+    padding: 32px 44px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* ========================================
+   Input Section - Two Column Layout
+   ======================================== */
+
+.reuniao-input-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+@media (max-width: 1024px) {
+    .reuniao-input-section {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ========================================
+   Cards
+   ======================================== */
+
+.input-card,
+.options-card,
+.processing-card,
+.result-card {
+    background: var(--color-main-background);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-large, 12px);
+    padding: 16px;
+}
+
+.input-card h2,
+.options-card h2,
+.result-card h2 {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--color-main-text);
+    margin: 0 0 20px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.input-card h2 .section-icon,
+.options-card h2 .section-icon,
+.result-card h2 .section-icon {
+    color: var(--color-text-maxcontrast);
+}
+
+/* ========================================
+   Upload Area
+   ======================================== */
+
+.upload-area {
+    border: 2px dashed var(--color-border-dark);
+    border-radius: 12px;
+    padding: 40px 24px;
+    text-align: center;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    background: var(--color-background-hover);
+}
+
+.upload-area:hover,
+.upload-area.drag-over {
+    border-color: var(--color-primary-element);
+    background: var(--color-primary-element-light);
+}
+
+.upload-content .upload-icon {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 16px;
+    color: var(--color-text-maxcontrast);
+}
+
+.upload-content p {
+    color: var(--color-text-maxcontrast);
+    margin: 0 0 16px 0;
+    font-size: 14px;
+}
+
+.upload-buttons {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.upload-buttons .button {
+    min-width: 140px;
+}
+
+/* File Selected State */
+.file-selected {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 20px;
+    background: var(--color-primary-element-light);
+    border-radius: 8px;
+}
+
+.file-selected .file-icon {
+    color: var(--color-primary-element);
+}
+
+.file-selected .file-name {
+    font-weight: 500;
+    color: var(--color-main-text);
+    word-break: break-all;
+}
+
+.button-delete {
+    background: transparent;
+    border: none;
+    color: var(--color-error);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.button-delete:hover {
+    background: var(--color-error);
+    color: white;
+}
+
+/* ========================================
+   Recording Section
+   ======================================== */
+
+.recording-section {
+    margin-top: 24px;
+}
+
+.divider {
+    text-align: center;
+    color: var(--color-text-maxcontrast);
+    margin: 20px 0;
+    position: relative;
+    font-size: 13px;
+}
+
+.divider::before,
+.divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 40%;
+    height: 1px;
+    background: var(--color-border);
+}
+
+.divider::before { left: 0; }
+.divider::after { right: 0; }
+
+.divider span {
+    background: var(--color-main-background);
+    padding: 0 16px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.btn-record {
+    width: 100%;
+    justify-content: center;
+    background: var(--color-error) !important;
+    border-color: var(--color-error) !important;
+}
+
+.btn-record:hover {
+    background: var(--color-error-hover, var(--color-error)) !important;
+    border-color: var(--color-error-hover, var(--color-error)) !important;
+}
+
+/* Recording Indicator */
+.recording-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px;
+    background: var(--color-primary-element-light);
+    border-radius: 8px;
+    border: 2px solid var(--color-error);
+}
+
+.recording-dot {
+    width: 12px;
+    height: 12px;
+    background: var(--color-error);
+    border-radius: 50%;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.9); }
+}
+
+.recording-time {
+    font-family: monospace;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--color-main-text);
+    min-width: 60px;
+}
+
+/* ========================================
+   Audio Source Selection
+   ======================================== */
+
+.audio-source-selection {
+    background: var(--color-background-hover);
+    padding: 16px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.source-label {
+    display: block;
+    margin-bottom: 12px;
+    font-weight: 600;
+    color: var(--color-main-text);
+    font-size: 14px;
+}
+
+.source-options {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.source-option-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 8px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-main-background);
+    transition: all 0.2s ease;
+}
+
+.source-option-label:hover {
+    border-color: var(--color-primary-element);
+}
+
+.source-option-label input[type="radio"] {
+    margin: 0;
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-primary-element);
+}
+
+.source-option-label span {
+    font-size: 14px;
+    color: var(--color-main-text);
+}
+
+#mic-select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--color-border-dark);
+    border-radius: 6px;
+    background-color: var(--color-main-background);
+    color: var(--color-main-text);
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+#mic-select:focus {
+    outline: none;
+    border-color: var(--color-primary-element);
+}
+
+#system-audio-hint {
+    margin-top: 0;
+    padding: 12px;
+    background-color: var(--color-primary-element-light);
+    border-radius: 6px;
+    border-left: 4px solid var(--color-primary-element);
+}
+
+#system-audio-hint p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--color-main-text);
+    line-height: 1.5;
+}
+
+/* ========================================
+   Output Types
+   ======================================== */
+
+.output-types {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+}
+
+@media (max-width: 600px) {
+    .output-types {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+.output-type {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 8px;
+    border: 2px solid var(--color-border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--color-main-background);
+}
+
+.output-type:hover {
+    border-color: var(--color-primary-element);
+    background: var(--color-background-hover);
+}
+
+.output-type.selected {
+    border-color: var(--color-primary-element);
+    background: var(--color-primary-element-light);
+}
+
+.output-type input {
+    display: none;
+}
+
+.output-type .type-icon {
+    margin-bottom: 6px;
+    color: var(--color-text-maxcontrast);
+}
+
+.output-type.selected .type-icon {
+    color: var(--color-primary-element);
+}
+
+.output-type .type-name {
+    font-size: 12px;
+    text-align: center;
+    color: var(--color-main-text);
+    font-weight: 500;
+}
+
+/* ========================================
+   Form Elements
+   ======================================== */
+
+.form-group {
+    margin-bottom: 24px;
+}
+
+.form-group > label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--color-main-text);
+    font-size: 14px;
+}
+
+.form-group > label .label-icon {
+    color: var(--color-text-maxcontrast);
+}
+
+.form-group > label .label-icon svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
+.form-group input[type="text"] {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid var(--color-border-dark);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.form-group input[type="text"]:focus {
+    outline: none;
+    border-color: var(--color-primary-element);
+}
+
+.form-group input[type="text"]::placeholder {
+    color: var(--color-text-maxcontrast);
+}
+
+.form-group textarea {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid var(--color-border-dark);
+    border-radius: 8px;
+    font-size: 14px;
+    resize: vertical;
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    font-family: inherit;
+    box-sizing: border-box;
+    min-height: 80px;
+}
+
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--color-primary-element);
+}
+
+.form-group textarea::placeholder {
+    color: var(--color-text-maxcontrast);
+}
+
+/* ========================================
+   Buttons
+   ======================================== */
+
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: 2px solid var(--color-border-dark);
+    border-radius: var(--border-radius-large, 8px);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    text-decoration: none;
+}
+
+.button:hover {
+    background: var(--color-background-hover);
+    border-color: var(--color-primary-element);
+}
+
+.button:focus {
+    outline: 2px solid var(--color-primary-element);
+    outline-offset: 2px;
+}
+
+.button.primary {
+    background: var(--color-primary-element);
+    color: var(--color-primary-element-text);
+    border-color: var(--color-primary-element);
+}
+
+.button.primary:hover {
+    background: var(--color-primary-element-hover);
+    border-color: var(--color-primary-element-hover);
+}
+
+.button.primary:disabled {
+    background: var(--color-background-dark);
+    border-color: var(--color-background-dark);
+    color: var(--color-text-maxcontrast);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.button.error {
+    background: var(--color-error);
+    color: white;
+    border-color: var(--color-error);
+}
+
+.button.error:hover {
+    background: var(--color-error-hover, var(--color-error));
+    border-color: var(--color-error-hover, var(--color-error));
+}
+
+.btn-process {
+    width: 100%;
+    padding: 14px 24px;
+    font-size: 15px;
+}
+
+/* ========================================
+   Processing Section
+   ======================================== */
+
+.processing-section {
+    display: flex;
+    justify-content: center;
+    padding: 60px 0;
+}
+
+.processing-card {
+    text-align: center;
+    padding: 48px;
+    max-width: 500px;
+    width: 100%;
+}
+
+.processing-card .spinner {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 24px;
+    border: 4px solid var(--color-border);
+    border-top-color: var(--color-primary-element);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.processing-card h3 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 12px 0;
+    color: var(--color-main-text);
+}
+
+.processing-status {
+    color: var(--color-text-maxcontrast);
+    margin: 0 0 24px 0;
+    font-size: 14px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 6px;
+    background: var(--color-background-dark);
+    border-radius: 3px;
+    margin: 0 0 16px 0;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--color-primary-element), var(--color-success));
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+.processing-tip {
+    color: var(--color-text-maxcontrast);
+    font-size: 13px;
+    margin: 0;
+}
+
+/* ========================================
+   Result Section
+   ======================================== */
+
+.result-section {
+    max-width: 100%;
+}
+
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.result-header h2 {
+    margin: 0;
+}
+
+.result-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.result-actions .button {
+    padding: 8px 14px;
+    font-size: 13px;
+}
+
+.result-content {
+    background: var(--color-background-hover);
+    border-radius: 8px;
+    padding: 24px;
+    max-height: calc(100vh - 320px);
+    overflow-y: auto;
+}
+
+.result-footer-actions {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.btn-new {
+    margin-top: 0 !important;
+}
+
+.formatted-result {
+    line-height: 1.7;
+    color: var(--color-main-text);
+    font-size: 14px;
+}
+
+.formatted-result h1 {
+    font-size: 20px;
+    margin: 0 0 16px 0;
+    color: var(--color-primary-element);
+    font-weight: 600;
+}
+
+.formatted-result h2 {
+    font-size: 17px;
+    margin: 24px 0 12px 0;
+    font-weight: 600;
+}
+
+.formatted-result h3 {
+    font-size: 15px;
+    margin: 20px 0 8px 0;
+    font-weight: 600;
+}
+
+.formatted-result .speaker {
+    font-weight: 600;
+    color: var(--color-primary-element);
+}
+
+.result-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+}
+
+.result-table td {
+    padding: 10px 14px;
+    border: 1px solid var(--color-border);
+}
+
+.result-table tr:nth-child(odd) {
+    background: var(--color-background-dark);
+}
+
+/* ========================================
+   Tasks Section
+   ======================================== */
+
+.tasks-section {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--color-border);
+}
+
+.tasks-section h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tasks-section h3 .section-icon {
+    color: var(--color-text-maxcontrast);
+}
+
+.tasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.task-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--color-background-hover);
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+}
+
+.task-item input[type="checkbox"] {
+    margin-top: 2px;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-primary-element);
+}
+
+.task-item label {
+    flex: 1;
+    cursor: pointer;
+}
+
+.task-title {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 4px;
+    color: var(--color-main-text);
+}
+
+.task-assignee,
+.task-due {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--color-text-maxcontrast);
+    margin-right: 12px;
+}
+
+/* ========================================
+   New Button
+   ======================================== */
+
+.btn-new {
+    margin-top: 24px;
+}
+
+/* ========================================
+   Responsive Design
+   ======================================== */
+
+@media (max-width: 768px) {
+    .reuniao-main {
+        padding: 20px;
+    }
+
+    .input-card,
+    .options-card,
+    .processing-card,
+    .result-card {
+        padding: 20px;
+    }
+
+    .result-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .result-actions {
+        justify-content: flex-start;
+    }
+
+    .result-actions .button-text {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .output-types {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .upload-area {
+        padding: 24px 16px;
+    }
+}
+/* =====================================================
+   BETA additions: badge, recovery banner, pause, size
+   ===================================================== */
+
+.beta-badge {
+    display: inline-block;
+    background: var(--color-warning, #c47800);
+    color: var(--color-warning-text, #fff);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-left: 8px;
+    vertical-align: middle;
+    text-transform: uppercase;
+}
+
+.recovery-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 12px 0 20px;
+    padding: 14px 18px;
+    background: var(--color-warning-container, var(--color-background-hover));
+    border: 1px solid var(--color-warning, #c47800);
+    border-left: 4px solid var(--color-warning, #c47800);
+    border-radius: var(--border-radius-large, 8px);
+    flex-wrap: wrap;
+}
+
+.recovery-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1 1 280px;
+}
+
+.recovery-icon {
+    font-size: 22px;
+    color: var(--color-warning, #c47800);
+    flex-shrink: 0;
+}
+
+.recovery-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.recovery-text strong {
+    color: var(--color-main-text);
+}
+
+.recovery-text span {
+    color: var(--color-text-maxcontrast);
+    font-size: 13px;
+}
+
+.recovery-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.recording-size {
+    margin: 0 8px;
+    color: var(--color-text-maxcontrast);
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+}
+
+.recording-dot.paused {
+    animation: none;
+    background: var(--color-text-maxcontrast);
+}
+
+#btn-pause {
+    margin-right: 4px;
+}
+
+@media (max-width: 480px) {
+    .recovery-banner {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .recovery-actions {
+        justify-content: stretch;
+    }
+    .recovery-actions .button {
+        flex: 1;
+        justify-content: center;
+    }
+}
+
+/* =====================================================
+   "Minhas Gravações" tab (Audiolog)
+   ===================================================== */
+
+/* App navigation (sidebar) — mesmo padrão visual do Files do NextCloud.
+ * Lista vertical de itens com ícone + label, item ativo destacado com cor primária.
+ */
+.audiolog-nav-list {
+    list-style: none;
+    margin: 0;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.audiolog-nav-entry {
+    border-radius: var(--border-radius-large, 12px);
+    transition: background 0.15s;
+}
+
+.audiolog-nav-entry:hover {
+    background: var(--color-background-hover, rgba(127,127,127,0.08));
+}
+
+.audiolog-nav-entry.is-active {
+    background: var(--color-primary-element, var(--color-primary, #0082c9));
+}
+
+.audiolog-nav-entry.is-active .audiolog-nav-link,
+.audiolog-nav-entry.is-active .audiolog-nav-label {
+    color: var(--color-primary-element-text, #fff);
+}
+
+.audiolog-nav-entry.is-active .audiolog-nav-icon svg {
+    fill: var(--color-primary-element-text, #fff);
+    color: var(--color-primary-element-text, #fff);
+}
+
+.audiolog-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    text-decoration: none;
+    color: var(--color-main-text, #2b2b2b);
+    font-size: 14px;
+    line-height: 1.3;
+    border-radius: var(--border-radius-large, 12px);
+}
+
+.audiolog-nav-link:hover,
+.audiolog-nav-link:focus {
+    text-decoration: none;
+    color: inherit;
+}
+
+.audiolog-nav-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.audiolog-nav-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.audiolog-nav-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.audiolog-nav-footer {
+    margin-top: auto;
+    padding: 12px 14px;
+    border-top: 1px solid var(--color-border, rgba(127,127,127,0.18));
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+#app-navigation .audiolog-nav-footer .beta-badge {
+    margin-left: 0;
+}
+
+.recordings-section {
+    padding: 8px 0;
+}
+
+.audiolog-icon-button {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: var(--color-main-text, #2b2b2b);
+    cursor: pointer;
+    transition: background 0.15s;
+    opacity: 0.75;
+}
+
+.audiolog-icon-button:hover {
+    background: var(--color-background-hover, rgba(127,127,127,0.10));
+    opacity: 1;
+}
+
+.audiolog-icon-button:focus-visible {
+    outline: 2px solid var(--color-primary-element, var(--color-primary, #0082c9));
+    outline-offset: 2px;
+}
+
+.audiolog-icon-button svg {
+    width: 20px;
+    height: 20px;
+}
+
+.recordings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.recordings-empty {
+    text-align: center;
+    padding: 40px 16px;
+    color: var(--color-text-maxcontrast, #888);
+}
+
+.recording-player {
+    width: 100%;
+    margin: 8px 0 4px;
+}
+
+.recording-outputs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.output-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: var(--color-primary-element-light);
+    border: 1px solid var(--color-primary-element-light);
+    color: var(--color-primary-element);
+    border-radius: 999px;
+    font-size: 12px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.output-chip:hover {
+    background: var(--color-primary-element-light-hover, var(--color-primary-element-light));
+}
+
+.output-chip-info {
+    background: var(--color-background-hover);
+    border-color: var(--color-border);
+    color: var(--color-text-maxcontrast);
+    cursor: default;
+}
+
+.button-delete {
+    color: var(--color-error);
+}
+
+/* =====================================================
+   Live transcription panel
+   ===================================================== */
+
+/* Live transcription full-section — replaces input cards while active. */
+.live-section {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 200px);
+}
+
+.live-card {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-main-background);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-large, 12px);
+    padding: 16px;
+}
+
+.live-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--color-border, rgba(127,127,127,0.14));
+}
+
+.live-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+}
+
+.live-header-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.live-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-error);
+    box-shadow: 0 0 0 0 currentColor;
+    animation: live-pulse 1.5s infinite;
+    flex-shrink: 0;
+    color: var(--color-error);
+}
+
+@keyframes live-pulse {
+    0% { box-shadow: 0 0 0 0 currentColor; opacity: 0.6; }
+    70% { box-shadow: 0 0 0 8px transparent; opacity: 1; }
+    100% { box-shadow: 0 0 0 0 transparent; opacity: 1; }
+}
+
+.live-time {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-maxcontrast, #888);
+    font-size: 13px;
+}
+
+.live-status {
+    font-size: 13px;
+    color: var(--color-text-maxcontrast, #888);
+    flex: 1 1 auto;
+}
+
+.live-transcript {
+    flex: 1 1 auto;
+    min-height: 50vh;
+    max-height: 65vh;
+    overflow-y: auto;
+    padding: 24px 28px;
+    background: var(--color-background-dark, rgba(127,127,127,0.06));
+    border-radius: 12px;
+    border: 1px solid var(--color-border, rgba(127,127,127,0.12));
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--color-main-text);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.live-transcript:empty::before {
+    content: "Comece a falar... os trechos transcritos vão aparecer aqui em tempo real.";
+    color: var(--color-text-maxcontrast, #888);
+    font-style: italic;
+    font-size: 15px;
+}
+
+.live-hint {
+    margin: 14px 4px 0;
+    color: var(--color-text-maxcontrast, #888);
+    font-size: 13px;
+    text-align: center;
+}
+
+/* =====================================================
+   Speaker naming panel
+   ===================================================== */
+
+.naming-header {
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--color-border, rgba(127,127,127,0.14));
+}
+
+.naming-subtitle {
+    margin: 6px 0 0;
+    color: var(--color-text-maxcontrast, #888);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.speaker-naming-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.speaker-naming-item {
+    background: var(--color-background-dark, rgba(127,127,127,0.06));
+    border: 1px solid var(--color-border, rgba(127,127,127,0.14));
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.speaker-naming-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.speaker-naming-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    background: var(--color-primary-element, var(--color-primary, #0082c9));
+    color: var(--color-primary-element-text, #fff);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.speaker-naming-quote {
+    flex: 1 1 240px;
+    color: var(--color-main-text, #2b2b2b);
+    font-style: italic;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.speaker-naming-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 12px;
+    border: 1px solid var(--color-border-dark, rgba(127,127,127,0.30));
+    border-radius: 8px;
+    background: var(--color-main-background, #fff);
+    color: var(--color-main-text, #2b2b2b);
+    font-size: 14px;
+}
+
+.speaker-naming-input:focus {
+    outline: none;
+    border-color: var(--color-primary-element, #0082c9);
+    box-shadow: 0 0 0 3px rgba(0,130,201,0.15);
+}
+
+.naming-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-border, rgba(127,127,127,0.14));
+}
+
+@media (max-width: 600px) {
+    .speaker-naming-head {
+        flex-direction: column;
+    }
+    .speaker-naming-quote {
+        flex: 1 1 auto;
+    }
+}
+
+/* =====================================================
+   Mini-Files (Minhas Gravações tab) — Files-like layout
+   ===================================================== */
+
+/* Use the full content area when on the recordings tab. */
+[data-tab-panel="recordings"].reuniao-main {
+    max-width: none;
+    padding: 12px 24px 32px;
+}
+
+/* Override styles further down to match Files density and aesthetic.
+   These come after the original ones so they win the cascade. */
+
+.audiolog-breadcrumb {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 14px;
+    padding: 8px 12px;
+    background: var(--color-background-dark, rgba(127,127,127,0.08));
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.audiolog-breadcrumb-item {
+    color: var(--color-primary-element, var(--color-primary, #0082c9));
+    text-decoration: none;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.audiolog-breadcrumb-item:hover {
+    background: var(--color-background-hover, rgba(127,127,127,0.10));
+}
+
+.audiolog-breadcrumb-item:last-child {
+    color: var(--color-main-text, #2b2b2b);
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.audiolog-breadcrumb-sep {
+    color: var(--color-text-maxcontrast, #888);
+    user-select: none;
+}
+
+.audiolog-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.audiolog-table {
+    border-radius: var(--border-radius-large, 12px);
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    background: var(--color-main-background);
+}
+
+.audiolog-row {
+    display: grid;
+    grid-template-columns: 1fr 100px 180px 200px;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--color-border, rgba(127,127,127,0.10));
+}
+
+.audiolog-row:last-child { border-bottom: none; }
+
+.audiolog-row-head {
+    background: var(--color-background-dark, rgba(127,127,127,0.06));
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-maxcontrast, #888);
+    padding: 8px 14px;
+}
+
+.audiolog-row-folder:hover,
+.audiolog-row-audio:hover,
+.audiolog-row-output:hover {
+    background: var(--color-background-hover, rgba(127,127,127,0.04));
+}
+
+.audiolog-col-name {
+    overflow: hidden;
+    min-width: 0;
+}
+
+.audiolog-name-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: var(--color-main-text, #2b2b2b);
+    cursor: pointer;
+    width: 100%;
+    overflow: hidden;
+}
+
+.audiolog-name-link:hover { text-decoration: none; }
+
+.audiolog-row-icon {
+    flex-shrink: 0;
+    width: 22px;
+    text-align: center;
+    font-size: 16px;
+}
+
+.audiolog-row-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.audiolog-col-size,
+.audiolog-col-date {
+    color: var(--color-text-maxcontrast, #888);
+    font-size: 12px;
+}
+
+.audiolog-col-actions {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+}
+
+.audiolog-col-actions .audiolog-icon-button {
+    width: 32px;
+    height: 32px;
+    padding: 0 !important;
+    font-size: 14px !important;
+    flex-shrink: 0;
+}
+
+.audiolog-row-expand-wrap {
+    grid-template-columns: 1fr;
+    background: var(--color-background-dark, rgba(127,127,127,0.05));
+}
+
+.audiolog-expanded {
+    padding: 12px 4px;
+}
+
+.audiolog-expanded .recording-player {
+    width: 100%;
+}
+
+@media (max-width: 768px) {
+    .audiolog-row {
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+            "name actions"
+            "size date";
+        row-gap: 4px;
+    }
+    .audiolog-row-head { display: none; }
+    .audiolog-col-name { grid-area: name; }
+    .audiolog-col-actions { grid-area: actions; }
+    .audiolog-col-size { grid-area: size; }
+    .audiolog-col-date { grid-area: date; text-align: right; }
+}
+
+/* =====================================================
+   Mini-Files refinements — match the NextCloud Files look:
+   density, hover-only actions, primary "+ New folder" button,
+   subtle breadcrumb, accent-colored folder icons.
+   ===================================================== */
+
+[data-tab-panel="recordings"] .audiolog-breadcrumb {
+    margin: 4px 0 8px;
+    padding: 6px 4px;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+[data-tab-panel="recordings"] .audiolog-breadcrumb-item {
+    padding: 6px 10px;
+    border-radius: 6px;
+    color: var(--color-text-maxcontrast, #888);
+}
+
+[data-tab-panel="recordings"] .audiolog-breadcrumb-item:hover {
+    background: var(--color-background-hover, rgba(127,127,127,0.10));
+    color: var(--color-main-text, #2b2b2b);
+}
+
+[data-tab-panel="recordings"] .audiolog-breadcrumb-item:last-child {
+    color: var(--color-main-text, #2b2b2b);
+    font-weight: 600;
+}
+
+[data-tab-panel="recordings"] .audiolog-toolbar {
+    margin-bottom: 8px;
+}
+
+/* "Nova pasta" — primary button mimicking Files's "+ Novo". */
+[data-tab-panel="recordings"] .audiolog-toolbar > .button:first-child {
+    background: var(--color-primary-element, #0082c9) !important;
+    color: var(--color-primary-element-text, #fff) !important;
+    border-color: var(--color-primary-element, #0082c9) !important;
+    font-weight: 600;
+}
+[data-tab-panel="recordings"] .audiolog-toolbar > .button:first-child:hover {
+    background: var(--color-primary-element-hover, var(--color-primary-element, #b80f1a)) !important;
+}
+
+/* Table: no card, just rows with subtle separators. */
+[data-tab-panel="recordings"] .audiolog-table {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+}
+
+[data-tab-panel="recordings"] .audiolog-row {
+    grid-template-columns: 1fr 110px 200px 220px;
+    padding: 4px 16px;
+    min-height: 50px;
+    border-bottom: 1px solid var(--color-border, rgba(127,127,127,0.10));
+    transition: background 0.10s;
+}
+
+[data-tab-panel="recordings"] .audiolog-row-head {
+    background: transparent;
+    border-bottom: 2px solid var(--color-border, rgba(127,127,127,0.18));
+    min-height: 0;
+    padding: 8px 16px;
+}
+
+[data-tab-panel="recordings"] .audiolog-row-folder,
+[data-tab-panel="recordings"] .audiolog-row-audio,
+[data-tab-panel="recordings"] .audiolog-row-output {
+    cursor: pointer;
+}
+
+[data-tab-panel="recordings"] .audiolog-row-folder:hover,
+[data-tab-panel="recordings"] .audiolog-row-audio:hover,
+[data-tab-panel="recordings"] .audiolog-row-output:hover {
+    background: var(--color-background-hover, rgba(127,127,127,0.06));
+}
+
+/* Folder icon takes the theme primary color, like Files. */
+[data-tab-panel="recordings"] .audiolog-row-folder .audiolog-row-icon {
+    color: var(--color-primary-element, #0082c9);
+    font-size: 22px;
+}
+[data-tab-panel="recordings"] .audiolog-row-audio .audiolog-row-icon,
+[data-tab-panel="recordings"] .audiolog-row-output .audiolog-row-icon {
+    color: var(--color-text-maxcontrast, #888);
+    font-size: 18px;
+}
+
+[data-tab-panel="recordings"] .audiolog-name-link {
+    color: var(--color-main-text, #2b2b2b) !important;
+    padding: 6px 0;
+    gap: 12px;
+}
+
+[data-tab-panel="recordings"] .audiolog-row-name {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Hide action buttons unless the row is hovered (Files behaviour). */
+[data-tab-panel="recordings"] .audiolog-col-actions {
+    opacity: 0;
+    transition: opacity 0.12s;
+    gap: 2px;
+}
+
+[data-tab-panel="recordings"] .audiolog-row:hover .audiolog-col-actions,
+[data-tab-panel="recordings"] .audiolog-row-expand-wrap .audiolog-col-actions {
+    opacity: 1;
+}
+
+/* Round, ghost-style action buttons. */
+[data-tab-panel="recordings"] .audiolog-col-actions .audiolog-icon-button {
+    background: transparent !important;
+    color: var(--color-main-text, #2b2b2b) !important;
+    border-radius: 50%;
+}
+
+[data-tab-panel="recordings"] .audiolog-col-actions .audiolog-icon-button:hover {
+    background: var(--color-background-dark, rgba(0,0,0,0.10)) !important;
+}
+
+@media (max-width: 768px) {
+    [data-tab-panel="recordings"] .audiolog-col-actions {
+        opacity: 1; /* always visible on touch */
+    }
+}
+
+/* Compact header (breadcrumb + toolbar in one row, Files-style). */
+[data-tab-panel="recordings"] .audiolog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 0 0 4px;
+    padding: 4px 0;
+}
+
+[data-tab-panel="recordings"] .audiolog-header .audiolog-breadcrumb {
+    margin: 0;
+    padding: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+[data-tab-panel="recordings"] .audiolog-header .audiolog-toolbar {
+    margin: 0;
+    flex: 0 0 auto;
+}
+
+[data-tab-panel="recordings"].reuniao-main {
+    padding: 8px 24px 24px;
+}
+
+/* Icon buttons in the toolbar (refresh, etc) */
+.audiolog-icon-button {
+    all: unset;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--color-main-text, #2b2b2b);
+    transition: background 0.12s;
+}
+
+.audiolog-icon-button:hover {
+    background: var(--color-background-hover, rgba(0,0,0,0.08));
+}
+
+.audiolog-icon-button.button-delete {
+    color: var(--color-error);
+}
+
+.audiolog-icon-button.button-delete:hover {
+    background: var(--color-error-hover, var(--color-background-hover));
+    color: var(--color-error);
+}
+
+/* Sidebar nav icons should match Files visually */
+.audiolog-nav-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* "+ Nova pasta" with icon + text */
+.audiolog-btn-new {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+}
+
+.audiolog-btn-new svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Row icon — center the SVG */
+.audiolog-row-icon svg {
+    display: block;
+}
+
+[data-tab-panel="recordings"] .audiolog-row-folder .audiolog-row-icon svg {
+    width: 22px;
+    height: 22px;
+}
+[data-tab-panel="recordings"] .audiolog-row-audio .audiolog-row-icon svg,
+[data-tab-panel="recordings"] .audiolog-row-output .audiolog-row-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* "Abrir no Files" primary CTA — main entry point for advanced file management. */
+[data-tab-panel="recordings"] .audiolog-btn-files {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    background: var(--color-primary-element, #0082c9) !important;
+    color: var(--color-primary-element-text, #fff) !important;
+    border-color: var(--color-primary-element, #0082c9) !important;
+    text-decoration: none;
+    padding: 6px 14px !important;
+    border-radius: var(--border-radius-pill, 999px);
+    font-weight: 600;
+}
+[data-tab-panel="recordings"] .audiolog-btn-files:hover {
+    background: var(--color-primary-element-hover, #b80f1a) !important;
+    text-decoration: none;
+}
+[data-tab-panel="recordings"] .audiolog-btn-files svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* "+ Nova pasta" — secondary now (default ghost button) */
+[data-tab-panel="recordings"] .audiolog-btn-new {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+}
+[data-tab-panel="recordings"] .audiolog-btn-new svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Drop the previous override that made the first toolbar button primary —
+   now we only want it on .audiolog-btn-files. */
+[data-tab-panel="recordings"] .audiolog-toolbar > .button:first-child {
+    /* unset the styles applied earlier */
+}
+
+/* Live tab — dedicated screen with title + device picker + start button.
+ * Takes the full content width like the Nova Gravação cards do. */
+.live-setup-card {
+    background: var(--color-main-background);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-large, 12px);
+    padding: 16px 20px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.live-setup-card h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 22px;
+}
+
+.live-setup-card h2 .header-icon svg {
+    width: 28px;
+    height: 28px;
+    color: var(--color-primary-element, #0082c9);
+}
+
+.live-setup-subtitle {
+    margin: 0 0 24px;
+    color: var(--color-text-maxcontrast, #888);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.btn-start-live {
+    width: 100%;
+    margin-top: 20px;
+    justify-content: center;
+    background: var(--color-error) !important;
+    border-color: var(--color-error) !important;
+}
+.btn-start-live:hover {
+    background: var(--color-error-hover, var(--color-error)) !important;
+    border-color: var(--color-error-hover, var(--color-error)) !important;
+}
+
+/* =====================================================
+   Mini-Files: multi-select, bulk actions, move modal
+   ===================================================== */
+
+[data-tab-panel="recordings"] .audiolog-row {
+    grid-template-columns: 32px 1fr 110px 200px 220px;
+}
+
+@media (max-width: 768px) {
+    [data-tab-panel="recordings"] .audiolog-row {
+        grid-template-columns: 32px 1fr auto;
+        grid-template-areas:
+            "check name actions"
+            "check size date";
+    }
+}
+
+.audiolog-col-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.audiolog-col-check input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--color-primary-element, #0082c9);
+}
+
+.audiolog-bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    background: var(--color-primary-element, #0082c9);
+    color: var(--color-primary-element-text, #fff);
+    border-radius: var(--border-radius-large, 12px);
+}
+
+.audiolog-bulk-count {
+    font-weight: 600;
+    margin-right: auto;
+    font-size: 14px;
+}
+
+.audiolog-bulk-bar .button {
+    background: rgba(255,255,255,0.15) !important;
+    color: var(--color-primary-element-text, #fff) !important;
+    border-color: transparent !important;
+}
+
+.audiolog-bulk-bar .button:hover {
+    background: rgba(255,255,255,0.25) !important;
+}
+
+.audiolog-bulk-bar .button-delete {
+    background: rgba(0,0,0,0.30) !important;
+}
+
+/* Modal overlay */
+.audiolog-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+}
+
+.audiolog-modal-card {
+    background: var(--color-main-background);
+    border-radius: var(--border-radius-large, 12px);
+    padding: 16px 20px;
+    max-width: 540px;
+    width: 100%;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    color: var(--color-main-text, #eee);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+
+.audiolog-folder-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    max-height: 50vh;
+    border: 1px solid var(--color-border, rgba(127,127,127,0.18));
+    border-radius: 8px;
+}
+
+.audiolog-folder-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--color-border, rgba(127,127,127,0.10));
+    font-size: 14px;
+}
+
+.audiolog-folder-item:last-child { border-bottom: none; }
+
+.audiolog-folder-item:hover {
+    background: var(--color-background-hover, rgba(127,127,127,0.10));
+}
+
+.audiolog-folder-item svg {
+    color: var(--color-primary-element, #0082c9);
+    flex-shrink: 0;
+}
+
+.audiolog-modal-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+/* =====================================================
+   Audiolog overlays — naming + refine loading
+   They cover the rest of the app (any tab) instead of stacking inline.
+   ===================================================== */
+section.audiolog-overlay,
+.audiolog-overlay {
+    position: fixed !important;
+    top: 50px !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: rgba(0,0,0,0.65) !important;
+    z-index: 9000 !important;
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    overflow-y: auto !important;
+    padding: 40px 20px !important;
+    margin: 0 !important;
+    max-width: none !important;
+    min-height: 0 !important;
+}
+
+/* Honor inline display:none from JS (the higher specificity above would
+   otherwise force display:flex even when the panel should be hidden). */
+.audiolog-overlay[style*="display: none"],
+.audiolog-overlay[style*="display:none"] {
+    display: none !important;
+}
+
+.audiolog-overlay > .live-card {
+    width: 100%;
+    max-width: 920px;
+    margin: 0 auto;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+
+.live-loading-card {
+    text-align: center;
+    padding: 36px 32px;
+}
+
+.live-loading-card .spinner {
+    margin: 0 auto 12px;
+}
+
+/* Gemini-only sub-section in admin — hidden via JS when provider is not gemini. */
+.provider-gemini-only {
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: var(--color-background-hover);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-large, 8px);
+}
+.provider-gemini-only h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 10px;
+    color: var(--color-text-maxcontrast);
+}

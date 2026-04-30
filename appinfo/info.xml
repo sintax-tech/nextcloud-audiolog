@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>audiolog</id>
+    <name>Audiolog</name>
+    <summary>Grave, transcreva e processe áudios com IA — direto no Nextcloud.</summary>
+    <description><![CDATA[
+**Audiolog** is a Nextcloud app to record, transcribe and process audio with AI models (Gemini, OpenAI/Whisper, Ollama).
+
+## Features
+
+- **In-browser recording** with pause, resume and a real-time size/duration indicator
+- **Auto-recovery** if the tab closes or the network drops mid-recording (IndexedDB-backed)
+- **Live transcription** via the browser's Web Speech API (free), Gemini Live or Google Cloud Speech-to-Text
+- **AI analysis**: summary, formal meeting minutes, agenda, task extraction
+- **Speaker diarization** in the post-stop refine pass with Gemini
+- **Multi-provider**: pick Gemini, OpenAI/Whisper, or Ollama (local) — no hidden cross-provider fallbacks
+- **Large audios** (>20 MB) supported via Gemini's Files API resumable upload
+- **Files integration**: recordings live under `Audiolog/`, fully manageable from the Files app
+- **Markdown or DOCX export** for Office/Collabora editing
+
+## Privacy
+
+- API keys encrypted at rest via `OCP\Security\ICrypto`
+- Per-group access control (`Allowed Groups` setting)
+- Live transcription with external API key restricted to admins by default (configurable)
+- Web Speech API runs entirely in the browser — no key ever leaves the server
+    ]]></description>
+    <version>1.0.0</version>
+    <licence>agpl</licence>
+    <author mail="jhonatan@sintax.tech">Jhonatan Jaworski</author>
+    <namespace>Audiolog</namespace>
+    <category>office</category>
+    <category>multimedia</category>
+    <category>tools</category>
+    <website>https://github.com/sintax-tech/nextcloud-audiolog</website>
+    <bugs>https://github.com/sintax-tech/nextcloud-audiolog/issues</bugs>
+    <repository type="git">https://github.com/sintax-tech/nextcloud-audiolog.git</repository>
+    <screenshot>https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/docs/screenshots/01-record.png</screenshot>
+    <screenshot>https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/docs/screenshots/02-live.png</screenshot>
+    <screenshot>https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/docs/screenshots/03-result.png</screenshot>
+    <screenshot>https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/docs/screenshots/04-admin.png</screenshot>
+    <dependencies>
+        <php min-version="8.1"/>
+        <nextcloud min-version="28" max-version="33"/>
+    </dependencies>
+    <navigations>
+        <navigation>
+            <name>Audiolog</name>
+            <route>audiolog.page.index</route>
+            <icon>app.svg</icon>
+            <order>11</order>
+        </navigation>
+    </navigations>
+    <settings>
+        <admin>OCA\Audiolog\Settings\AdminSettings</admin>
+        <admin-section>OCA\Audiolog\Settings\AdminSection</admin-section>
+    </settings>
+</info>

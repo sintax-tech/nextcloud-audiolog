@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Maskable safe area: keep core content within the central 80% (≈ inset 51.2px) -->
+  <rect width="512" height="512" fill="#9E0A12"/>
+  <g fill="#ffffff" stroke="#ffffff" stroke-linecap="round">
+    <!-- Outer ring of the logomark -->
+    <circle cx="256" cy="256" r="150" fill="none" stroke-width="22"/>
+    <!-- Waveform bars (5) -->
+    <rect x="160" y="224" width="26" height="64"  rx="13" stroke="none"/>
+    <rect x="202" y="192" width="26" height="128" rx="13" stroke="none"/>
+    <rect x="244" y="160" width="26" height="192" rx="13" stroke="none"/>
+    <rect x="286" y="196" width="26" height="120" rx="13" stroke="none"/>
+    <rect x="328" y="224" width="26" height="64"  rx="13" stroke="none"/>
+  </g>
+</svg>
