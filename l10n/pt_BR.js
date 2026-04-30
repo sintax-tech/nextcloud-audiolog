@@ -194,6 +194,7 @@ OC.L10N.register(
         "Web Speech API — recomendado (grátis, Chrome/Edge)": "Web Speech API — recomendado (grátis, Chrome/Edge)",
         "Web Speech API não suportada neste navegador. Use Chrome ou Edge, ou troque o provedor no admin.": "Web Speech API não suportada neste navegador. Use Chrome ou Edge, ou troque o provedor no admin.",
         "Web Speech usa o motor do Google em modo streaming nativo do navegador — qualidade alta sem custo de API, sem expor chave ao usuário. Gemini Live e Google STT exigem chave; usam a chave configurada acima (e a chave dedicada de Google STT, quando preenchida).": "Web Speech usa o motor do Google em modo streaming nativo do navegador — qualidade alta sem custo de API, sem expor chave ao usuário. Gemini Live e Google STT exigem chave; usam a chave configurada acima (e a chave dedicada de Google STT, quando preenchida).",
+        "Ambos os provedores funcionam para qualquer usuário do grupo permitido sem expor a chave de API: Web Speech roda inteiramente no browser; Google STT é proxied pelo servidor (a chave fica em segurança no Nextcloud).": "Ambos os provedores funcionam para qualquer usuário do grupo permitido sem expor a chave de API: Web Speech roda inteiramente no browser; Google STT é proxied pelo servidor (a chave fica em segurança no Nextcloud).",
     },
     "nplurals=2; plural=(n > 1);"
 );

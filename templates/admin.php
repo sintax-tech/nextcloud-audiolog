@@ -218,7 +218,7 @@ $icons = [
                 <option value="web-speech" <?php echo $_['realtime_stt_provider'] === 'web-speech' ? 'selected' : ''; ?>><?php p($l->t('Web Speech API (Chrome/Edge, grátis, browser-only)')); ?></option>
                 <option value="google-stt" <?php echo ($_['realtime_stt_provider'] === 'google-stt') ? 'selected' : ''; ?>><?php p($l->t('Google Cloud Speech-to-Text (proxy server-side, qualquer usuário)')); ?></option>
             </select>
-            <p class="hint"><?php p($l->t('Ambos os provedores funcionam para qualquer usuário do grupo permitido sem expor a chave de API: Web Speech roda 100% no browser; Google STT é proxied pelo servidor (a chave fica em segurança no Nextcloud).')); ?></p>
+            <p class="hint"><?php p($l->t('Ambos os provedores funcionam para qualquer usuário do grupo permitido sem expor a chave de API: Web Speech roda inteiramente no browser; Google STT é proxied pelo servidor (a chave fica em segurança no Nextcloud).')); ?></p>
         </div>
 
         <!-- Rate limit -->
