@@ -74,7 +74,7 @@ Then on apps.nextcloud.com:
 
 1. Open the app page → "Releases" → "Upload new release"
 2. **Download URL**: a stable HTTPS URL where the tarball lives. Two common choices:
-   - GitHub release assets: `https://github.com/sintax-tech/nextcloud-audiolog/releases/download/v1.0.0/audiolog-1.0.0.tar.gz`
+   - GitHub release assets: `https://github.com/sintax-tech/nextcloud-audiolog/releases/download/v.1.0.0/audiolog-1.0.0.tar.gz`
    - Your own server: `https://nextcloud-audiolog.sintax.tech/audiolog-1.0.0.tar.gz`
 3. **Signature**: paste the output of `make sign`
 4. **Nightly / pre-release**: leave unchecked for `1.0.0`
