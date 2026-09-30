@@ -42,8 +42,11 @@ build: clean
 	@echo "→ Building $(app_name) $(version)"
 	@mkdir -p $(appstore_dir)
 	@# Tarball MUST contain exactly one top-level dir named after the app id.
-	@cd $(CURDIR)/.. && tar czf $(appstore_dir)/$(app_name)-$(version).tar.gz \
-		$(exclude_patterns) \
+	@# COPYFILE_DISABLE=1 impede o tar do macOS de gravar AppleDouble (._*);
+	@# --exclude='._*' é rede de segurança portável (macOS + Linux).
+	@cd $(CURDIR)/.. && COPYFILE_DISABLE=1 tar \
+		$(exclude_patterns) --exclude='._*' \
+		-czf $(appstore_dir)/$(app_name)-$(version).tar.gz \
 		$(app_name)/
 	@echo "→ Output: $(appstore_dir)/$(app_name)-$(version).tar.gz"
 	@ls -lh $(appstore_dir)/$(app_name)-$(version).tar.gz

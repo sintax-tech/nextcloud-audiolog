@@ -26,7 +26,7 @@
 - Live transcription with external API key restricted to admins by default (configurable)
 - Web Speech API runs entirely in the browser — no key ever leaves the server
     ]]></description>
-    <version>1.0.1</version>
+    <version>1.0.2</version>
     <licence>agpl</licence>
     <author mail="jhonatan@sintax.tech">Jhonatan Jaworski</author>
     <namespace>Audiolog</namespace>
