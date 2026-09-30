@@ -26,12 +26,13 @@
 - Live transcription with external API key restricted to admins by default (configurable)
 - Web Speech API runs entirely in the browser — no key ever leaves the server
     ]]></description>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <licence>agpl</licence>
     <author mail="jhonatan@sintax.tech">Jhonatan Jaworski</author>
     <namespace>Audiolog</namespace>
-    <category>office</category>
+    <category>ai</category>
     <category>multimedia</category>
+    <category>office</category>
     <category>tools</category>
     <website>https://github.com/sintax-tech/nextcloud-audiolog</website>
     <bugs>https://github.com/sintax-tech/nextcloud-audiolog/issues</bugs>

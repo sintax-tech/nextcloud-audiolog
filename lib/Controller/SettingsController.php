@@ -179,7 +179,7 @@ class SettingsController extends Controller {
             'detail' => $tmpFree !== false ? $this->humanBytes($tmpFree) . ' livres' : 'não foi possível ler'
         ];
 
-        $dataDir = \OC::$server->getConfig()->getSystemValue('datadirectory', '');
+        $dataDir = $this->config->getSystemValue('datadirectory', '');
         if ($dataDir) {
             $dataFree = @disk_free_space($dataDir);
             $checks[] = [

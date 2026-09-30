@@ -15,6 +15,7 @@ use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\BackgroundJob\IJobList;
+use OCP\IConfig;
 use OCP\IGroupManager;
 use OCP\IRequest;
 use OCP\IUserSession;
@@ -30,7 +31,8 @@ class ApiController extends Controller {
         private JobMapper $jobMapper,
         private IJobList $jobList,
         private PermissionService $permissions,
-        private IGroupManager $groupManager
+        private IGroupManager $groupManager,
+        private IConfig $config
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -551,7 +553,7 @@ class ApiController extends Controller {
             $check = $this->requireAccess();
             if ($check instanceof JSONResponse) { return $check; }
 
-            $config = \OC::$server->getConfig();
+            $config = $this->config;
             $appName = Application::APP_ID;
 
             $enabled = $config->getAppValue($appName, 'enable_realtime_stt', 'false') === 'true';
@@ -618,7 +620,7 @@ class ApiController extends Controller {
             if ($check instanceof JSONResponse) { return $check; }
 
             $appName = Application::APP_ID;
-            $config = \OC::$server->getConfig();
+            $config = $this->config;
 
             $enabled = $config->getAppValue($appName, 'enable_realtime_stt', 'false') === 'true';
             if (!$enabled) {

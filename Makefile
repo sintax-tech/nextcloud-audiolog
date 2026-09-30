@@ -31,6 +31,7 @@ exclude_patterns=\
 	--exclude='*.log' \
 	--exclude='Makefile' \
 	--exclude='tests' \
+	--exclude='dist' \
 	--exclude='docs/screenshots'
 
 .PHONY: all
