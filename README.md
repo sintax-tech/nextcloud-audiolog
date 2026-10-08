@@ -32,7 +32,7 @@ The app deliberately keeps providers isolated: pick OpenAI and the app won't eve
 - **Files-app integration**: everything lives under `Audiolog/<project>/`
 - **Markdown / DOCX export** for Collabora / Office round-trips
 - **PWA**: install as a standalone app on iOS / Android, with the browser's Wake Lock keeping the screen on during long sessions
-- **Multilingual UI** (English, Portuguese, partial Spanish)
+- **Multilingual UI** (English, Portuguese, Spanish)
 
 ## Security
 
@@ -90,11 +90,16 @@ templates/main.php     ← user-facing page (Files-style nav, Live, Recordings t
 templates/admin.php    ← admin settings form
 js/audiolog-main.js    ← recording, IDB persistence, live transcription router
 js/audiolog-admin.js   ← admin form, provider switching
+js/audiolog-speaker-naming.js ← speaker name editing UI
+js/audiolog-sw.js      ← service worker (PWA)
+js/pcm-extractor-worklet.js ← AudioWorklet that extracts PCM for live STT
 lib/Controller/        ← Page, Api, Settings controllers
 lib/Service/AudioService.php       ← provider-specific audio processing
 lib/Service/PermissionService.php  ← group ACL
 lib/Service/CryptoHelper.php       ← API-key encryption wrapper
 lib/BackgroundJob/ProcessAudioJob.php  ← async pipeline
+lib/Db/                ← Job entity and mapper
+lib/Migration/         ← database schema
 ```
 
 ## Development
@@ -107,7 +112,7 @@ make test         # PHPUnit + Jest
 make clean        # wipe build/
 ```
 
-See [`PUBLISHING.md`](PUBLISHING.md) for the full release-to-store workflow.
+Releases are published as a signed tarball committed under `dist/`; the app store downloads it from the raw GitHub URL. See [`PUBLISHING.md`](PUBLISHING.md) for the full release-to-store workflow and [`CHANGELOG.md`](CHANGELOG.md) for the version history.
 
 ## License
 
@@ -141,11 +146,11 @@ Os provedores são isolados: se você escolher OpenAI, o app **não chama Google
 - **Recuperação automática** se a aba fechar ou a internet cair no meio da gravação (persistência via IndexedDB)
 - **Transcrição em tempo real** com auto-reconexão em silêncio
 - **Identificação de falantes** no refinamento pós-stop, com UI pra associar nomes reais aos rótulos `[Falante 1]`, `[Falante 2]`...
-- **Áudios grandes** (>20 MB) suportados via Files API resumable do Gemini
+- **Áudios grandes** suportados via Files API resumable do Gemini (a partir de 18 MB por padrão, configurável)
 - **Integração com Files**: tudo organizado em `Audiolog/<projeto>/`, abre normalmente pelo app Files do Nextcloud
 - **Exportação Markdown / DOCX** para edição no Collabora / Office
 - **PWA**: instala como app nativo no iOS/Android, Wake Lock mantém a tela ligada durante sessões longas
-- **Interface multilíngue** (Inglês, Português, parcial Espanhol)
+- **Interface multilíngue** (Inglês, Português, Espanhol)
 
 ### Segurança
 
@@ -182,6 +187,18 @@ occ app:enable audiolog
 5. Restrinja o acesso via **Grupos Permitidos** se não quiser liberar pra todo mundo
 
 O botão de **healthcheck** valida ffmpeg, ffprobe, extensões PHP, espaço em disco e conectividade da API num único clique.
+
+### Desenvolvimento
+
+```bash
+make build        # gera build/appstore/audiolog-X.Y.Z.tar.gz
+make sign         # assina o tarball com o certificado da loja
+make lint         # php -l em todos os arquivos PHP
+make test         # PHPUnit + Jest
+make clean        # apaga build/
+```
+
+As releases são publicadas como um tarball assinado versionado em `dist/`; a loja baixa pela URL raw do GitHub. Veja [`PUBLISHING.md`](PUBLISHING.md) para o fluxo completo e [`CHANGELOG.md`](CHANGELOG.md) para o histórico de versões.
 
 ### Licença
 
