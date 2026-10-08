@@ -4,11 +4,6 @@
  * @copyright 2025 Jhonatan Jaworski
  */
 
-// Load Nextcloud dialogs for FilePicker
-\OCP\Util::addScript('core', 'dist/files_fileinfo');
-\OCP\Util::addScript('core', 'dist/files_client');
-\OCP\Util::addScript('files', 'dist/files-main');
-
 \OCP\Util::addScript('audiolog', 'audiolog-main');
 \OCP\Util::addStyle('audiolog', 'style');
 
