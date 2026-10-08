@@ -921,7 +921,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * isn't available or fails — caller should fall back to single-shot transcribe.
      */
     private function probeAudioDuration(string $audioPath): float {
-        [$rc, $out] = $this->media->run($this->media->probeDurationCommand($audioPath));
+        [$rc, $out] = $this->media->run($this->media->probeDurationCommand($audioPath), 120);
         return $rc === 0 ? (float)trim($out) : 0.0;
     }
 

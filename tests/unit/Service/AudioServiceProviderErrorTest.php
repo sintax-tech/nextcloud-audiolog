@@ -44,8 +44,8 @@ class AudioServiceProviderErrorTest extends TestCase {
             $crypto,
             $this->createMock(JobMapper::class),
             new SecretRedactor($config, $crypto),
-            new \OCA\Audiolog\Service\MediaTools(),
-            TestHelpers::tempManager($this, sys_get_temp_dir() . '/audiolog_tests_' . getmypid()),
+            new \OCA\Audiolog\Service\MediaTools($tm = TestHelpers::tempManager($this, sys_get_temp_dir() . '/audiolog_tests_' . getmypid())),
+            $tm,
         );
     }
 

@@ -70,8 +70,8 @@ final class TestHelpers {
             $crypto,
             $deps['jobMapper'] ?? $mock(JobMapper::class),
             $deps['redactor'] ?? new SecretRedactor($config, $crypto),
-            $deps['media'] ?? new \OCA\Audiolog\Service\MediaTools(),
-            $deps['tempManager'] ?? self::tempManager($tc, sys_get_temp_dir() . '/audiolog_tests_' . getmypid()),
+            $deps['media'] ?? new \OCA\Audiolog\Service\MediaTools($tempManager = $deps['tempManager'] ?? self::tempManager($tc, sys_get_temp_dir() . '/audiolog_tests_' . getmypid())),
+            $tempManager,
         );
     }
 
