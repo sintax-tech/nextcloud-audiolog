@@ -362,7 +362,11 @@
     "não encontrada — instale php-%s": "not found — install php-%s",
     "não encontrado no PATH": "not found in PATH",
     "não foi possível ler": "could not read",
-    "Áudio salvo com sucesso": "Audio saved successfully"
+    "Áudio salvo com sucesso": "Audio saved successfully",
+    "O ffmpeg não está disponível no servidor. Peça ao administrador para instalá-lo.": "ffmpeg is not available on the server. Ask your administrator to install it.",
+    "A extração do áudio excedeu o tempo limite.": "Extracting the audio took too long.",
+    "Formato de áudio ou vídeo não suportado. Formatos aceitos: %s.": "Unsupported audio or video format. Accepted formats: %s.",
+    "Não foi possível extrair o áudio do vídeo.": "Could not extract the audio from the video."
   },
   "pluralForm": "nplurals=2; plural=(n != 1);"
 }

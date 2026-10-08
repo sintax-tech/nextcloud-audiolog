@@ -24,7 +24,11 @@ class MediaTools {
      * demuxers whose names list their aliases; any listed alias matches.
      */
     private const FORMATS = ['-format_whitelist',
-        'mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,mp3,ogg,wav,flac,aac,asf,avi,amr,aiff,caf,wv,mpeg,mpegts,flv'];
+        'mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,mp3,ogg,wav,w64,flac,aac,ac3,eac3,asf,avi,amr,aiff,caf,wv,mpeg,mpegts,flv'];
+    /** The same list, for people (shown when a file is refused). */
+    private const FORMATS_LABEL = 'MP3, WAV, OGG/Opus, FLAC, AAC, M4A/MP4/MOV, WebM/MKV, WMA/ASF, AVI, AMR, AIFF, WavPack, AC3, MPEG/TS, FLV';
+    /** stderr lines meaning "this input is not a (supported) media file". */
+    private const UNSUPPORTED_INPUT = '/Format not on whitelist|Invalid data found when processing input|does not contain any stream|Unknown input format|moov atom not found|could not find codec parameters/i';
     /** ffmpeg prints progress and one line per bad frame: keep only errors. */
     private const QUIET = ['-nostats', '-loglevel', 'error'];
     /** run() exit code when the process was killed at the timeout. */
@@ -75,6 +79,20 @@ class MediaTools {
     public function looksLikePlaylist(string $head): bool {
         $head = ltrim(substr($head, 0, 1024), "\xEF\xBB\xBF \t\r\n");
         return (bool)preg_match('/^(#EXTM3U|ffconcat\b|<\?xml\b|<MPD\b|<SmoothStreamingMedia\b)/i', $head);
+    }
+
+    public function acceptedFormatsLabel(): string {
+        return self::FORMATS_LABEL;
+    }
+
+    /** run() result meaning the binary itself is missing or could not start. */
+    public function isUnavailable(int $exitCode): bool {
+        return $exitCode === -1 || $exitCode === 127;
+    }
+
+    /** run() stderr meaning the input format was refused or not recognized. */
+    public function isUnsupportedInput(string $stderr): bool {
+        return (bool)preg_match(self::UNSUPPORTED_INPUT, $stderr);
     }
 
     /**

@@ -1159,8 +1159,22 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
         if ($returnCode !== 0 || !file_exists($outputPath) || filesize($outputPath) === 0) {
             @unlink($outputPath);
-            $this->logger->error('FFmpeg extraction failed: ' . substr($stderr, -2000));
-            throw new \RuntimeException('Falha ao extrair áudio do vídeo. Verifique se ffmpeg está instalado.');
+            $this->logger->error('FFmpeg extraction failed (exit ' . $returnCode . '): ' . substr($stderr, -2000));
+            // Tell the user the actual cause: a refused format is not a
+            // missing ffmpeg.
+            if ($this->media->isUnavailable($returnCode)) {
+                throw new InvalidInputException($this->l10n->t('O ffmpeg não está disponível no servidor. Peça ao administrador para instalá-lo.'), 503);
+            }
+            if ($returnCode === MediaTools::EXIT_TIMEOUT) {
+                throw new InvalidInputException($this->l10n->t('A extração do áudio excedeu o tempo limite.'), 504);
+            }
+            if ($this->media->isUnsupportedInput($stderr)) {
+                throw new InvalidInputException($this->l10n->t(
+                    'Formato de áudio ou vídeo não suportado. Formatos aceitos: %s.',
+                    [$this->media->acceptedFormatsLabel()]
+                ), 415);
+            }
+            throw new InvalidInputException($this->l10n->t('Não foi possível extrair o áudio do vídeo.'), 422);
         }
 
         return [

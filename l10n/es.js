@@ -364,6 +364,10 @@ OC.L10N.register(
         "não encontrado no PATH": "no se encontró en el PATH",
         "não foi possível ler": "no se pudo leer",
         "Áudio salvo com sucesso": "Audio guardado correctamente",
+        "O ffmpeg não está disponível no servidor. Peça ao administrador para instalá-lo.": "ffmpeg no está disponible en el servidor. Pida al administrador que lo instale.",
+        "A extração do áudio excedeu o tempo limite.": "La extracción del audio superó el tiempo límite.",
+        "Formato de áudio ou vídeo não suportado. Formatos aceitos: %s.": "Formato de audio o vídeo no admitido. Formatos aceptados: %s.",
+        "Não foi possível extrair o áudio do vídeo.": "No se pudo extraer el audio del vídeo.",
     },
     "nplurals=2; plural=(n != 1);"
 );
