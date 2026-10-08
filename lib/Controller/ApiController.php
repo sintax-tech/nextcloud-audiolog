@@ -7,6 +7,7 @@ use OCA\Audiolog\AppInfo\Application;
 use OCA\Audiolog\BackgroundJob\ProcessAudioJob;
 use OCA\Audiolog\Db\Job;
 use OCA\Audiolog\Db\JobMapper;
+use OCA\Audiolog\Exception\DeckPartialException;
 use OCA\Audiolog\Exception\DeckPermissionException;
 use OCA\Audiolog\Exception\DeckUnavailableException;
 use OCA\Audiolog\Exception\InvalidInputException;
@@ -431,8 +432,25 @@ class ApiController extends Controller {
                 'count' => $count,
                 'message' => $count . ' tarefas criadas no Deck',
             ]);
+        } catch (DeckPartialException $e) {
+            $created = $e->getCreated();
+            return new JSONResponse([
+                'success' => false,
+                'partial' => true,
+                'count' => count($created),
+                'created' => $created,
+                'error' => 'Falha no Deck depois de criar ' . count($created) . ' de ' . $e->getTotal()
+                    . ' cartões (' . implode(', ', $created) . '). Não repita a exportação inteira para não duplicar esses cartões.',
+            ], Http::STATUS_MULTI_STATUS);
         } catch (DeckPermissionException $e) {
-            return new JSONResponse(['error' => 'Sem permissão para criar cartões neste quadro do Deck.'], Http::STATUS_FORBIDDEN);
+            return match ($e->getReason()) {
+                DeckPermissionException::REASON_ARCHIVED => new JSONResponse(
+                    ['error' => 'O quadro do Deck está arquivado. Desarquive-o ou escolha outro quadro.'], Http::STATUS_CONFLICT),
+                DeckPermissionException::REASON_NOT_FOUND => new JSONResponse(
+                    ['error' => 'Quadro ou lista do Deck não encontrados.'], Http::STATUS_NOT_FOUND),
+                default => new JSONResponse(
+                    ['error' => 'Sem permissão para criar cartões neste quadro do Deck.'], Http::STATUS_FORBIDDEN),
+            };
         } catch (DeckUnavailableException $e) {
             return new JSONResponse(['error' => 'Deck não está instalado ou habilitado.'], Http::STATUS_FAILED_DEPENDENCY);
         } catch (\Throwable $e) {

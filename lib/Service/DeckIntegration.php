@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace OCA\Audiolog\Service;
 
+use OCA\Audiolog\Exception\DeckPartialException;
 use OCA\Audiolog\Exception\DeckPermissionException;
 use OCA\Audiolog\Exception\DeckUnavailableException;
 use OCP\App\IAppManager;
@@ -19,10 +20,15 @@ use Psr\Log\LoggerInterface;
  *  - CardService::create($title, $stackId, $type, $order, $owner, $description, ...)
  *    keeps the same leading positional parameters; 1.17 added scalar types,
  *    1.18 appended $startdate/$color. We pass exactly the first six, typed.
- *  - StackService::find($stackId) / findAll($boardId) check READ themselves.
- *  - BoardService::findAll($since, $fullDetails, $includeArchived) is stable.
- *  - PermissionService::getPermissions($boardId, $userId) is stable (1.17
- *    appended $allowDeleted) and returns [Acl::PERMISSION_* => bool].
+ *  - StackService::find($stackId) / findAll($boardId) check READ themselves;
+ *    find() also returns soft-deleted lists (deletedAt > 0), refused here.
+ *  - BoardService::find($boardId, $fullDetails, $allowDeleted) checks READ
+ *    and throws DoesNotExistException for deleted boards; findAll($since,
+ *    $fullDetails, $includeArchived) has the same signature everywhere.
+ *  - PermissionService::getPermissions($boardId, $userId) returns
+ *    [Acl::PERMISSION_* => bool]; 1.17 appended $allowDeleted, and since 1.18
+ *    it THROWS DoesNotExistException for a missing/deleted board (earlier
+ *    versions returned all-false). canEdit() treats any throw as "no".
  */
 class DeckIntegration {
     private const CARD_SERVICE = 'OCA\Deck\Service\CardService';
@@ -85,31 +91,40 @@ class DeckIntegration {
     }
 
     /**
-     * Create one card per task in $stackId, after checking that the stack
-     * belongs to $boardId and that $userId may edit that board.
+     * Create one card per task in $stackId, after checking that the board
+     * exists and is not archived, that the stack is live and belongs to
+     * $boardId, and that $userId may edit that board.
      *
      * @param array<int,array{title?:string,assignee?:string,dueDate?:string}> $tasks
      * @return int number of cards created
-     * @throws DeckPermissionException|DeckUnavailableException
+     * @throws DeckPermissionException|DeckUnavailableException|DeckPartialException
      */
     public function createCards(string $userId, array $tasks, int $boardId, int $stackId): int {
         $this->assertAvailable();
+        $boardService = $this->service(self::BOARD_SERVICE);
         $stackService = $this->service(self::STACK_SERVICE);
         $cardService = $this->service(self::CARD_SERVICE);
 
         try {
+            $board = $boardService->find($boardId, false);
             $stack = $stackService->find($stackId);
         } catch (\Throwable $e) {
-            throw $this->translate($e);
+            // Missing, deleted or unreadable: same answer, no id enumeration.
+            $this->logger->debug('Audiolog: Deck lookup failed: ' . get_class($e));
+            throw new DeckPermissionException('Quadro ou lista do Deck não encontrados.', DeckPermissionException::REASON_NOT_FOUND);
         }
-        if ($stack === null || (int)$stack->getBoardId() !== $boardId) {
-            throw new DeckPermissionException('A lista informada não pertence ao quadro.');
+        if ((int)$board->getDeletedAt() > 0 || (int)$stack->getDeletedAt() > 0 || (int)$stack->getBoardId() !== $boardId) {
+            throw new DeckPermissionException('A lista informada não pertence ao quadro.', DeckPermissionException::REASON_NOT_FOUND);
+        }
+        if ($board->getArchived()) {
+            throw new DeckPermissionException('O quadro do Deck está arquivado.', DeckPermissionException::REASON_ARCHIVED);
         }
         if (!$this->canEdit($boardId, $userId)) {
             throw new DeckPermissionException('Sem permissão de edição neste quadro do Deck.');
         }
 
-        $created = 0;
+        // Validate the whole batch before writing anything.
+        $cards = [];
         foreach ($tasks as $task) {
             $title = trim((string)($task['title'] ?? ''));
             if ($title === '') {
@@ -122,21 +137,25 @@ class DeckIntegration {
             if (!empty($task['dueDate'])) {
                 $description .= 'Prazo: ' . $task['dueDate'];
             }
-            try {
-                $cardService->create(
-                    mb_substr($title, 0, self::MAX_TITLE),
-                    $stackId,
-                    'plain',
-                    self::CARD_ORDER,
-                    $userId,
-                    trim($description)
-                );
-            } catch (\Throwable $e) {
-                throw $this->translate($e);
-            }
-            $created++;
+            $cards[] = [mb_substr($title, 0, self::MAX_TITLE), trim($description)];
         }
-        return $created;
+
+        $created = [];
+        foreach ($cards as [$title, $description]) {
+            try {
+                $cardService->create($title, $stackId, 'plain', self::CARD_ORDER, $userId, $description);
+            } catch (\Throwable $e) {
+                $error = $this->translate($e);
+                if ($created !== []) {
+                    // Some cards exist already: tell which, so a retry does not duplicate them.
+                    $this->logger->warning('Audiolog: Deck batch stopped after ' . count($created) . ' cards: ' . $error->getMessage());
+                    throw new DeckPartialException($created, count($cards));
+                }
+                throw $error;
+            }
+            $created[] = $title;
+        }
+        return count($created);
     }
 
     private function canEdit(int $boardId, string $userId): bool {
@@ -171,9 +190,7 @@ class DeckIntegration {
         if ($e instanceof DeckPermissionException || $e instanceof DeckUnavailableException) {
             return $e;
         }
-        $this->logger->warning('Audiolog: Deck call failed: ' . $e->getMessage());
-        // Deck's NotFound/BadRequest for an id the user can't see: same answer
-        // as a permission refusal, so ids of other users' stacks don't leak.
-        return new DeckPermissionException('Quadro ou lista do Deck não encontrados.');
+        $this->logger->warning('Audiolog: Deck call failed: ' . get_class($e) . ': ' . $e->getMessage());
+        return new \RuntimeException('Falha ao criar cartão no Deck.');
     }
 }

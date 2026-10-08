@@ -70,6 +70,7 @@ namespace OCA\Deck\Service {
     if (!class_exists(BoardService::class)) {
         class BoardService {
             public function findAll(int $since = -1, bool $fullDetails = false, bool $includeArchived = true): array { return []; }
+            public function find(int $boardId, bool $fullDetails = true, bool $allowDeleted = false) { return null; }
         }
     }
 

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace OCA\Audiolog\Tests\Unit\Service;
 
+use OCA\Audiolog\Exception\DeckPartialException;
 use OCA\Audiolog\Exception\DeckPermissionException;
 use OCA\Audiolog\Exception\DeckUnavailableException;
 use OCA\Audiolog\Service\DeckIntegration;
@@ -30,6 +31,8 @@ class DeckIntegrationTest extends TestCase {
     private BoardService&MockObject $boards;
     private DeckPermissionService&MockObject $perms;
     private IAppManager&MockObject $appManager;
+    /** @var array<int,Board> what BoardService::find returns; other ids throw DoesNotExistException */
+    private array $boardsById = [];
 
     protected function setUp(): void {
         $this->cards = $this->createMock(CardService::class);
@@ -38,6 +41,13 @@ class DeckIntegrationTest extends TestCase {
         $this->perms = $this->createMock(DeckPermissionService::class);
         $this->appManager = $this->createMock(IAppManager::class);
         $this->appManager->method('isEnabledForUser')->with('deck')->willReturn(true);
+        $this->boardsById = [3 => new Board(3, 'Team'), 9 => new Board(9, 'Other')];
+        $this->boards->method('find')->willReturnCallback(function (int $id) {
+            if (!isset($this->boardsById[$id])) {
+                throw new \OCP\AppFramework\Db\DoesNotExistException('board');
+            }
+            return $this->boardsById[$id];
+        });
     }
 
     private function integration(): DeckIntegration {
@@ -146,5 +156,79 @@ class DeckIntegrationTest extends TestCase {
         // Sorted by title; read-only, deleted and archived boards are gone.
         $this->assertSame([5, 1], array_column($boards, 'id'));
         $this->assertSame([['id' => 11, 'title' => 'Todo']], $boards[1]['stacks']);
+    }
+
+    private function refusal(callable $fn): DeckPermissionException {
+        try {
+            $fn();
+        } catch (DeckPermissionException $e) {
+            return $e;
+        }
+        $this->fail('expected DeckPermissionException');
+    }
+
+    /** R6: a soft-deleted list still answers StackService::find; cards there would be invisible. */
+    public function testSoftDeletedStackIsRefused(): void {
+        $this->stacks->method('find')->willReturn(new Stack(5, 'Old', 3, 0, 1700000000));
+        $this->perms->method('getPermissions')->willReturn($this->permissions(true));
+        $this->cards->expects($this->never())->method('create');
+
+        $e = $this->refusal(fn () => $this->integration()->createCards('alice', [['title' => 'X task']], 3, 5));
+        $this->assertSame(DeckPermissionException::REASON_NOT_FOUND, $e->getReason());
+    }
+
+    /** R7: an archived board gets its own reason (Deck refuses writes there). */
+    public function testArchivedBoardIsRefusedWithItsOwnReason(): void {
+        $this->boardsById[3] = new Board(3, 'Old project', true);
+        $this->stacks->method('find')->willReturn(new Stack(5, 'Todo', 3));
+        $this->perms->method('getPermissions')->willReturn($this->permissions(true));
+        $this->cards->expects($this->never())->method('create');
+
+        $e = $this->refusal(fn () => $this->integration()->createCards('alice', [['title' => 'X task']], 3, 5));
+        $this->assertSame(DeckPermissionException::REASON_ARCHIVED, $e->getReason());
+    }
+
+    public function testMissingBoardIsNotFound(): void {
+        $this->cards->expects($this->never())->method('create');
+        $e = $this->refusal(fn () => $this->integration()->createCards('alice', [['title' => 'X task']], 404, 5));
+        $this->assertSame(DeckPermissionException::REASON_NOT_FOUND, $e->getReason());
+    }
+
+    public function testNoEditPermissionReason(): void {
+        $this->stacks->method('find')->willReturn(new Stack(5, 'Todo', 3));
+        $this->perms->method('getPermissions')->willReturn($this->permissions(false));
+        $e = $this->refusal(fn () => $this->integration()->createCards('mallory', [['title' => 'X task']], 3, 5));
+        $this->assertSame(DeckPermissionException::REASON_NO_PERMISSION, $e->getReason());
+    }
+
+    /** R8: a failure in the middle of the batch reports what was already created. */
+    public function testFailureMidBatchReportsCreatedCards(): void {
+        $this->stacks->method('find')->willReturn(new Stack(5, 'Todo', 3));
+        $this->perms->method('getPermissions')->willReturn($this->permissions(true));
+        $n = 0;
+        $this->cards->method('create')->willReturnCallback(function () use (&$n) {
+            if (++$n === 3) {
+                throw new \RuntimeException('db down');
+            }
+            return null;
+        });
+
+        try {
+            $this->integration()->createCards('alice', [
+                ['title' => 'One'], ['title' => 'Two'], ['title' => 'Three'], ['title' => 'Four'],
+            ], 3, 5);
+            $this->fail('expected DeckPartialException');
+        } catch (DeckPartialException $e) {
+            $this->assertSame(['One', 'Two'], $e->getCreated());
+            $this->assertSame(4, $e->getTotal());
+        }
+    }
+
+    /** R8: invalid input is rejected before any card is created. */
+    public function testBatchWithoutAnyValidTitleCreatesNothing(): void {
+        $this->stacks->method('find')->willReturn(new Stack(5, 'Todo', 3));
+        $this->perms->method('getPermissions')->willReturn($this->permissions(true));
+        $this->cards->expects($this->never())->method('create');
+        $this->assertSame(0, $this->integration()->createCards('alice', [['title' => '  '], []], 3, 5));
     }
 }

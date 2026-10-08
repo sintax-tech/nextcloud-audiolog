@@ -5,6 +5,7 @@ namespace OCA\Audiolog\Tests\Unit\Controller;
 
 use OCA\Audiolog\Controller\ApiController;
 use OCA\Audiolog\Db\JobMapper;
+use OCA\Audiolog\Exception\DeckPartialException;
 use OCA\Audiolog\Exception\DeckPermissionException;
 use OCA\Audiolog\Service\AudioService;
 use OCA\Audiolog\Service\CryptoHelper;
@@ -68,5 +69,35 @@ class ApiControllerDeckTest extends TestCase {
 
         $this->assertSame(200, $response->getStatus());
         $this->assertSame(1, $response->getData()['count']);
+    }
+
+    /** R7: an archived board gets a clear message, not "not found". */
+    public function testArchivedBoardMessage(): void {
+        $deck = $this->createMock(DeckIntegration::class);
+        $deck->method('createCards')->willThrowException(new DeckPermissionException('x', DeckPermissionException::REASON_ARCHIVED));
+        $response = $this->controller(['tasks' => [['title' => 'T task']], 'boardId' => '3', 'stackId' => '5'], $deck)->createDeckCards();
+        $this->assertSame(409, $response->getStatus());
+        $this->assertStringContainsString('arquivado', $response->getData()['error']);
+    }
+
+    public function testMissingBoardIs404(): void {
+        $deck = $this->createMock(DeckIntegration::class);
+        $deck->method('createCards')->willThrowException(new DeckPermissionException('x', DeckPermissionException::REASON_NOT_FOUND));
+        $response = $this->controller(['tasks' => [['title' => 'T task']], 'boardId' => '3', 'stackId' => '5'], $deck)->createDeckCards();
+        $this->assertSame(404, $response->getStatus());
+    }
+
+    /** R8: a partial batch tells the user which cards exist, so they do not retry and duplicate. */
+    public function testPartialBatchReportsCreatedCards(): void {
+        $deck = $this->createMock(DeckIntegration::class);
+        $deck->method('createCards')->willThrowException(new DeckPartialException(['One', 'Two'], 4));
+        $response = $this->controller(['tasks' => [['title' => 'One']], 'boardId' => '3', 'stackId' => '5'], $deck)->createDeckCards();
+        $data = $response->getData();
+        $this->assertSame(207, $response->getStatus());
+        $this->assertTrue($data['partial']);
+        $this->assertSame(2, $data['count']);
+        $this->assertSame(['One', 'Two'], $data['created']);
+        $this->assertStringContainsString('One', $data['error']);
+        $this->assertStringContainsString('2', $data['error']);
     }
 }
