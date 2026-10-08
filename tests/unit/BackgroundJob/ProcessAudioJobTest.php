@@ -40,6 +40,7 @@ class ProcessAudioJobTest extends TestCase {
             $mapper,
             $logger,
             new SecretRedactor($config, $crypto),
+            \OCA\Audiolog\Tests\Unit\Support\TestHelpers::l10n($this),
         );
         $run = new \ReflectionMethod($bgJob, 'run');
         $run->invoke($bgJob, ['jobId' => 7, 'userId' => 'alice', 'kind' => 'process_nc', 'ncPath' => 'Audiolog/a.wav']);

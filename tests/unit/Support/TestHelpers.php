@@ -73,7 +73,21 @@ final class TestHelpers {
             $deps['redactor'] ?? new SecretRedactor($config, $crypto),
             $deps['media'] ?? new \OCA\Audiolog\Service\MediaTools($tempManager),
             $tempManager,
+            $deps['l10n'] ?? self::l10n($tc),
         );
+    }
+
+    /**
+     * IL10N mock that applies the placeholders like the real one (sprintf
+     * style) and prefixes $mark, so a test can tell a string went through t().
+     */
+    public static function l10n(TestCase $tc, string $mark = ''): \OCP\IL10N {
+        $l = (new \ReflectionMethod($tc, 'createMock'))->invoke($tc, \OCP\IL10N::class);
+        $l->method('t')->willReturnCallback(
+            fn (string $text, $parameters = []) => $mark . ($parameters === [] ? $text : vsprintf($text, (array)$parameters))
+        );
+        $l->method('getLanguageCode')->willReturn('pt_BR');
+        return $l;
     }
 
     /**

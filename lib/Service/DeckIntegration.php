@@ -7,6 +7,7 @@ use OCA\Audiolog\Exception\DeckPartialException;
 use OCA\Audiolog\Exception\DeckPermissionException;
 use OCA\Audiolog\Exception\DeckUnavailableException;
 use OCP\App\IAppManager;
+use OCP\IL10N;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 
@@ -45,7 +46,8 @@ class DeckIntegration {
     public function __construct(
         private IAppManager $appManager,
         private ContainerInterface $container,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private IL10N $l10n
     ) {
     }
 
@@ -132,10 +134,10 @@ class DeckIntegration {
             }
             $description = '';
             if (!empty($task['assignee'])) {
-                $description .= 'Responsável: ' . $task['assignee'] . "\n";
+                $description .= $this->l10n->t('Responsável: %s', [(string)$task['assignee']]) . "\n";
             }
             if (!empty($task['dueDate'])) {
-                $description .= 'Prazo: ' . $task['dueDate'];
+                $description .= $this->l10n->t('Prazo: %s', [(string)$task['dueDate']]);
             }
             $cards[] = [mb_substr($title, 0, self::MAX_TITLE), trim($description)];
         }

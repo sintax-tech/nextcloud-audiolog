@@ -33,6 +33,7 @@ class SettingsControllerConnectionTest extends TestCase {
             'audiolog', $this->createMock(IRequest::class), $cfg, $crypto,
             $clientService, new SecretRedactor($cfg, $crypto),
             TestHelpers::tempManager($this, sys_get_temp_dir() . '/audiolog_tests_' . getmypid()),
+            \OCA\Audiolog\Tests\Unit\Support\TestHelpers::l10n($this),
         );
     }
 

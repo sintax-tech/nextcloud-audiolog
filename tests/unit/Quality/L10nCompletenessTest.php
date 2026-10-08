@@ -76,4 +76,24 @@ class L10nCompletenessTest extends TestCase {
             }
         }
     }
+
+    /**
+     * R5: user-facing texts in lib/ (API errors and messages, input errors)
+     * must go through IL10N. Internal-only values carry "// l10n-ignore".
+     */
+    public function testNoUntranslatedUserFacingLiteralsInLib(): void {
+        $offenders = [];
+        foreach ($this->phpFiles($this->root() . '/lib') as $file) {
+            foreach (file($file) as $n => $line) {
+                if (str_contains($line, 'l10n-ignore')) {
+                    continue;
+                }
+                if (preg_match('/[\'"](error|message|note)[\'"]\s*=>\s*[\'"]/', $line)
+                    || preg_match('/new InvalidInputException\(\s*[\'"]/', $line)) {
+                    $offenders[] = basename($file) . ':' . ($n + 1) . ' ' . trim($line);
+                }
+            }
+        }
+        $this->assertSame([], $offenders);
+    }
 }

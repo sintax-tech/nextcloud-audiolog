@@ -55,6 +55,7 @@ class ApiControllerUploadValidationTest extends TestCase {
             $permissions, $this->createMock(IGroupManager::class), $cfg,
             new SecretRedactor($cfg, $crypto), $this->createMock(DeckIntegration::class),
             $this->createMock(\OCP\ITempManager::class),
+            \OCA\Audiolog\Tests\Unit\Support\TestHelpers::l10n($this),
         );
     }
 

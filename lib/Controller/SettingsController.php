@@ -11,6 +11,7 @@ use OCP\AppFramework\Http\JSONResponse;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\LocalServerException;
 use OCP\IConfig;
+use OCP\IL10N;
 use OCP\ITempManager;
 use OCP\IRequest;
 use OCA\Audiolog\Settings\AdminSettings;
@@ -24,14 +25,19 @@ class SettingsController extends Controller {
         private CryptoHelper $crypto,
         private IClientService $clientService,
         private SecretRedactor $redactor,
-        private ITempManager $tempManager
+        private ITempManager $tempManager,
+        private IL10N $l10n
     ) {
         parent::__construct($appName, $request);
     }
 
     /** Shown when Nextcloud refuses a local/private address (Ollama on localhost/LAN). */
-    private const LOCAL_BLOCKED_HINT = 'O Nextcloud bloqueou o acesso a um endereço local ou da rede interna. '
-        . 'Para usar um Ollama local, defina \'allow_local_remote_servers\' => true no config.php.';
+    private function localBlockedHint(): string {
+        return $this->l10n->t(
+            'O Nextcloud bloqueou o acesso a um endereço local ou da rede interna. Para usar um Ollama local, defina %s no config.php.',
+            ["'allow_local_remote_servers' => true"]
+        );
+    }
 
     #[AuthorizedAdminSetting(settings: AdminSettings::class)]
     public function saveSettings(
@@ -86,7 +92,7 @@ class SettingsController extends Controller {
 
             return new JSONResponse(['status' => 'success']);
         } catch (\Exception $e) {
-            return new JSONResponse(['status' => 'error', 'message' => $e->getMessage()], 500);
+            return new JSONResponse(['status' => 'error', 'message' => $this->l10n->t('Não foi possível salvar as configurações.')], 500);
         }
     }
 
@@ -130,9 +136,11 @@ class SettingsController extends Controller {
         $apiKeyEnc = $this->config->getAppValue($this->appName, 'api_key', '');
         $apiKey = $this->crypto->decrypt($apiKeyEnc);
         $checks[] = [
-            'name' => 'API key configurada',
+            'name' => $this->l10n->t('Chave de API configurada'),
             'ok' => !empty($apiKey),
-            'detail' => empty($apiKey) ? 'Configure a chave em "Chave de API"' : 'OK (' . strlen($apiKey) . ' chars)'
+            'detail' => empty($apiKey)
+                ? $this->l10n->t('Configure a chave em "Chave de API"')
+                : $this->l10n->t('OK (%s caracteres)', [(string)strlen($apiKey)])
         ];
 
         // --- Gemini reachable? ---
@@ -152,12 +160,12 @@ class SettingsController extends Controller {
                 $geminiOk = $code > 0 && $code < 500;
                 $geminiDetail = "HTTP {$code}";
             } catch (LocalServerException $e) {
-                $geminiDetail = self::LOCAL_BLOCKED_HINT;
+                $geminiDetail = $this->localBlockedHint();
             } catch (\Throwable $e) {
                 $geminiDetail = $this->redactor->redact($e->getMessage());
             }
             $checks[] = [
-                'name' => 'Conectividade ' . parse_url($aiUrl, PHP_URL_HOST),
+                'name' => $this->l10n->t('Conectividade com %s', [(string)parse_url($aiUrl, PHP_URL_HOST)]),
                 'ok' => $geminiOk,
                 'detail' => $geminiDetail
             ];
@@ -176,9 +184,9 @@ class SettingsController extends Controller {
         foreach ($requiredExts as $ext) {
             $loaded = extension_loaded($ext);
             $checks[] = [
-                'name' => 'Extensão PHP: ' . $ext,
+                'name' => $this->l10n->t('Extensão PHP: %s', [$ext]),
                 'ok' => $loaded,
-                'detail' => $loaded ? 'carregada' : 'não encontrada — instale php-' . $ext,
+                'detail' => $loaded ? $this->l10n->t('carregada') : $this->l10n->t('não encontrada — instale php-%s', [$ext]),
             ];
         }
 
@@ -186,18 +194,18 @@ class SettingsController extends Controller {
         $tmpDir = $this->tempManager->getTempBaseDir();
         $tmpFree = @disk_free_space($tmpDir);
         $checks[] = [
-            'name' => 'Espaço em ' . $tmpDir,
+            'name' => $this->l10n->t('Espaço em %s', [$tmpDir]),
             'ok' => $tmpFree !== false && $tmpFree > 100 * 1024 * 1024,
-            'detail' => $tmpFree !== false ? $this->humanBytes($tmpFree) . ' livres' : 'não foi possível ler'
+            'detail' => $tmpFree !== false ? $this->l10n->t('%s livres', [$this->humanBytes($tmpFree)]) : $this->l10n->t('não foi possível ler')
         ];
 
         $dataDir = $this->config->getSystemValue('datadirectory', '');
         if ($dataDir) {
             $dataFree = @disk_free_space($dataDir);
             $checks[] = [
-                'name' => 'Espaço em data dir',
+                'name' => $this->l10n->t('Espaço no diretório de dados'),
                 'ok' => $dataFree !== false && $dataFree > 500 * 1024 * 1024,
-                'detail' => $dataFree !== false ? $this->humanBytes($dataFree) . ' livres' : 'não foi possível ler'
+                'detail' => $dataFree !== false ? $this->l10n->t('%s livres', [$this->humanBytes($dataFree)]) : $this->l10n->t('não foi possível ler')
             ];
         }
 
@@ -228,7 +236,7 @@ class SettingsController extends Controller {
             }
         }
         if (!$found) {
-            return ['name' => $bin, 'ok' => false, 'detail' => 'não encontrado no PATH'];
+            return ['name' => $bin, 'ok' => false, 'detail' => $this->l10n->t('não encontrado no PATH')];
         }
 
         $proc = @proc_open([$found, $arg], [
@@ -236,7 +244,7 @@ class SettingsController extends Controller {
             2 => ['pipe', 'w'],
         ], $pipes);
         if (!is_resource($proc)) {
-            return ['name' => $bin, 'ok' => false, 'detail' => 'falha ao executar'];
+            return ['name' => $bin, 'ok' => false, 'detail' => $this->l10n->t('falha ao executar')];
         }
         $stdout = stream_get_contents($pipes[1]) ?: '';
         fclose($pipes[1]);
@@ -246,7 +254,7 @@ class SettingsController extends Controller {
         return [
             'name' => $bin,
             'ok' => $rc === 0,
-            'detail' => $rc === 0 ? ($first ?: 'OK') : 'erro de execução'
+            'detail' => $rc === 0 ? ($first ?: 'OK') : $this->l10n->t('erro de execução')
         ];
     }
 
@@ -298,19 +306,19 @@ class SettingsController extends Controller {
             if ($httpCode >= 200 && $httpCode < 400) {
                 return new JSONResponse([
                     'status' => 'success',
-                    'message' => 'Conexao estabelecida com sucesso!'
+                    'message' => $this->l10n->t('Conexão estabelecida com sucesso!')
                 ]);
             }
             return new JSONResponse([
                 'status' => 'error',
-                'message' => "Falha na conexao. Codigo HTTP: {$httpCode}"
+                'message' => $this->l10n->t('Falha na conexão. Código HTTP: %s', [(string)$httpCode])
             ], 400);
         } catch (LocalServerException $e) {
-            return new JSONResponse(['status' => 'error', 'message' => self::LOCAL_BLOCKED_HINT], 400);
+            return new JSONResponse(['status' => 'error', 'message' => $this->localBlockedHint()], 400);
         } catch (\Throwable $e) {
             return new JSONResponse([
                 'status' => 'error',
-                'message' => 'Erro ao testar conexao: ' . $this->redactor->redact($e->getMessage())
+                'message' => $this->l10n->t('Erro ao testar a conexão: %s', [$this->redactor->redact($e->getMessage())])
             ], 500);
         }
     }

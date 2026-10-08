@@ -4,10 +4,12 @@ declare(strict_types=1);
 namespace OCA\Audiolog\BackgroundJob;
 
 use OCA\Audiolog\Db\JobMapper;
+use OCA\Audiolog\Exception\InvalidInputException;
 use OCA\Audiolog\Service\AudioService;
 use OCA\Audiolog\Service\SecretRedactor;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
+use OCP\IL10N;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -36,7 +38,8 @@ class ProcessAudioJob extends QueuedJob {
         private AudioService $audioService,
         private JobMapper $jobMapper,
         private LoggerInterface $logger,
-        private SecretRedactor $redactor
+        private SecretRedactor $redactor,
+        private IL10N $l10n
     ) {
         parent::__construct($time);
     }
@@ -94,12 +97,16 @@ class ProcessAudioJob extends QueuedJob {
             $job->setFinishedAt($this->time->getTime());
             $this->jobMapper->update($job);
         } catch (\Throwable $e) {
-            // job.error is returned to the user by /api/status: never let a
-            // provider message carry an API key there or into the log.
+            // job.error is returned to the user by /api/status: only our own
+            // translated input errors go there as is; anything else (provider
+            // details, internal paths) stays in the log, redacted.
             $message = $this->redactor->redact($e->getMessage());
             $this->logger->error('Audiolog ProcessAudioJob failed: ' . $message);
+            $userMessage = $e instanceof InvalidInputException
+                ? $message
+                : $this->l10n->t('Falha ao processar o áudio. Verifique os logs do servidor para detalhes.');
             $job->setStatus('failed');
-            $job->setError(mb_substr($message, 0, 4000));
+            $job->setError(mb_substr($userMessage, 0, 4000));
             $job->setFinishedAt($this->time->getTime());
             $this->jobMapper->update($job);
         }

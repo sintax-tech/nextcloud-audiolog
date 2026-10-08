@@ -6,8 +6,11 @@ generated from them in the format Nextcloud loads (OC.L10N.register).
 
   tools/l10n.py sync     regenerate every l10n/*.js from its .json
   tools/l10n.py check    exit 1 when a string used in lib/, templates/ or js/
-                         is missing or empty in any language, or the .js files
-                         are out of date
+                         is missing or empty in any language, the .js files
+                         are out of date, or lib/ hands the user a literal
+                         text without IL10N ('error'/'message'/'note' => '...',
+                         new InvalidInputException('...')); internal-only
+                         lines carry "// l10n-ignore"
   tools/l10n.py unused   list keys no source file uses
 """
 import json
@@ -65,9 +68,26 @@ def sync() -> None:
         (L10N / f'{lang}.js').write_text(render_js(data), encoding='utf-8')
 
 
+UNTRANSLATED = [
+    re.compile(r"""['"](error|message|note)['"]\s*=>\s*['"]"""),
+    re.compile(r"""new InvalidInputException\(\s*['"]"""),
+]
+
+
+def untranslated_literals() -> list:
+    found = []
+    for f in sorted((ROOT / 'lib').rglob('*.php')):
+        for n, line in enumerate(f.read_text(encoding='utf-8').splitlines(), 1):
+            if 'l10n-ignore' in line:
+                continue
+            if any(p.search(line) for p in UNTRANSLATED):
+                found.append(f'{f.relative_to(ROOT)}:{n}: user-facing text without IL10N: {line.strip()}')
+    return found
+
+
 def check() -> int:
     used = used_strings()
-    problems = []
+    problems = untranslated_literals()
     for lang in LANGS:
         data = load(lang)
         tr = data['translations']

@@ -43,6 +43,7 @@ class SttProxyLimitsTest extends TestCase {
             $this->createMock(\OCP\Http\Client\IClientService::class),
             $this->createMock(\OCA\Audiolog\Service\SecretRedactor::class),
             $this->createMock(\OCP\ITempManager::class),
+            \OCA\Audiolog\Tests\Unit\Support\TestHelpers::l10n($this),
         );
         $controller->saveSettings('gemini', 'https://x', '', 'm', 'pt', '100', 'true', 'transcricao');
 

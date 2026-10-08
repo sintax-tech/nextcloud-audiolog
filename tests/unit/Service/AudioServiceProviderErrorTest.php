@@ -46,6 +46,7 @@ class AudioServiceProviderErrorTest extends TestCase {
             new SecretRedactor($config, $crypto),
             new \OCA\Audiolog\Service\MediaTools($tm = TestHelpers::tempManager($this, sys_get_temp_dir() . '/audiolog_tests_' . getmypid())),
             $tm,
+            \OCA\Audiolog\Tests\Unit\Support\TestHelpers::l10n($this),
         );
     }
 

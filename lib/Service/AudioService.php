@@ -12,6 +12,7 @@ use OCP\Http\Client\IClientService;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCP\IConfig;
+use OCP\IL10N;
 use OCP\ITempManager;
 use Psr\Log\LoggerInterface;
 
@@ -29,7 +30,8 @@ class AudioService {
         private JobMapper $jobMapper,
         private SecretRedactor $redactor,
         private MediaTools $media,
-        private ITempManager $tempManager
+        private ITempManager $tempManager,
+        private IL10N $l10n
     ) {
     }
 
@@ -71,9 +73,10 @@ class AudioService {
         $since = time() - (24 * 3600);
         $count = $this->jobMapper->countSince($userId, $since);
         if ($count >= $max) {
-            throw new \RuntimeException(
-                "Limite diário de processamentos atingido ({$count}/{$max}). Tente novamente amanhã ou peça ao admin para aumentar a cota."
-            );
+            throw new InvalidInputException($this->l10n->t(
+                'Limite diário de processamentos atingido (%1$s/%2$s). Tente novamente amanhã ou peça ao administrador para aumentar a cota.',
+                [(string)$count, (string)$max]
+            ), 429);
         }
     }
 
@@ -164,8 +167,10 @@ class AudioService {
                 default => $client->post($url, $options),
             };
         } catch (\OCP\Http\Client\LocalServerException $e) {
-            throw new ProviderException('O Nextcloud bloqueou o acesso a um endereço local ou da rede interna. '
-                . "Para usar um Ollama local, defina 'allow_local_remote_servers' => true no config.php.");
+            throw new ProviderException($this->l10n->t(
+                'O Nextcloud bloqueou o acesso a um endereço local ou da rede interna. Para usar um Ollama local, defina %s no config.php.',
+                ["'allow_local_remote_servers' => true"]
+            ));
         } catch (\Throwable $e) {
             throw new ProviderException($this->redactor->redact($e->getMessage()));
         }
@@ -1133,7 +1138,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      */
     private function assertMediaContent(string $content): void {
         if ($this->media->looksLikePlaylist($content) || !$this->media->isMediaContent($content)) {
-            throw new InvalidInputException('O arquivo não é um áudio ou vídeo válido', 415);
+            throw new InvalidInputException($this->l10n->t('O arquivo não é um áudio ou vídeo válido'), 415);
         }
     }
 
@@ -1185,7 +1190,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $this->recordJob($userId, 'process', 'failed', [
                 'sourcePath' => $filename,
                 'outputTypes' => $outputTypes,
-                'error' => 'Falha ao ler arquivo',
+                'error' => 'Falha ao ler arquivo', // l10n-ignore: internal job record
             ]);
             throw new \RuntimeException('Falha ao ler arquivo');
         }
@@ -1271,12 +1276,12 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $file = $userFolder->get($path);
 
             if (!($file instanceof \OCP\Files\File)) {
-                throw new InvalidInputException('O caminho especificado não é um arquivo');
+                throw new InvalidInputException($this->l10n->t('O caminho especificado não é um arquivo'));
             }
 
             $maxMb = (int)$this->config->getAppValue($this->appName, 'max_file_size', '100');
             if ($maxMb > 0 && $file->getSize() > $maxMb * 1024 * 1024) {
-                throw new InvalidInputException('O arquivo excede o tamanho máximo de ' . $maxMb . ' MB', 413);
+                throw new InvalidInputException($this->l10n->t('O arquivo excede o tamanho máximo de %s MB', [(string)$maxMb]), 413);
             }
 
             $audioContent = $file->getContent();
@@ -1286,7 +1291,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
             // Validate it's an audio or video file
             if (!str_starts_with($mimeType, 'audio/') && !str_starts_with($mimeType, 'video/')) {
-                throw new InvalidInputException('O arquivo selecionado não é um arquivo de áudio ou vídeo', 415);
+                throw new InvalidInputException($this->l10n->t('O arquivo selecionado não é um arquivo de áudio ou vídeo'), 415);
             }
             // Nextcloud derives the type from the extension: check the bytes.
             $this->assertMediaContent($audioContent);
@@ -1356,9 +1361,9 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         } catch (NotFoundException $e) {
             $this->recordJob($userId, 'process', 'failed', [
                 'sourcePath' => $path,
-                'error' => 'Arquivo não encontrado: ' . $path,
+                'error' => 'not found', // l10n-ignore: internal job record
             ]);
-            throw new \RuntimeException('Arquivo não encontrado: ' . $path);
+            throw new InvalidInputException($this->l10n->t('Arquivo não encontrado: %s', [$path]), 404);
         }
     }
 
@@ -1369,16 +1374,16 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         try {
             $savedPath = $this->saveAudioFile($userId, $content, $filename, $title);
             if (empty($savedPath)) {
-                return ["error" => "Falha ao salvar arquivo"];
+                return ['error' => $this->l10n->t('Falha ao salvar o arquivo')];
             }
             return [
                 "success" => true,
-                "message" => "Audio salvo com sucesso",
+                "message" => $this->l10n->t('Áudio salvo com sucesso'),
                 "path" => $savedPath
             ];
         } catch (\Exception $e) {
             $this->logger->error("Erro ao salvar gravacao: " . $e->getMessage());
-            return ["error" => $e->getMessage()];
+            return ['error' => $this->l10n->t('Falha ao salvar o arquivo')];
         }
     }
 
@@ -1915,7 +1920,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 'fileId' => 0,
                 'breadcrumb' => [['name' => 'Audiolog', 'path' => 'Audiolog']],
                 'items' => [],
-                'error' => $e->getMessage(),
+                'error' => $this->l10n->t('Não foi possível listar as gravações.'),
             ];
         }
     }
@@ -1929,10 +1934,10 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $parent = $this->resolveSafeAudiosFolder($userId, $parentRelPath);
             $safe = $this->sanitizeFilename($name);
             if ($safe === '') {
-                return ['error' => 'Nome de pasta inválido'];
+                return ['error' => $this->l10n->t('Nome de pasta inválido')];
             }
             if ($parent->nodeExists($safe)) {
-                return ['error' => 'Já existe uma pasta com esse nome'];
+                return ['error' => $this->l10n->t('Já existe uma pasta com esse nome')];
             }
             $parent->newFolder($safe);
             return [
@@ -1942,7 +1947,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             ];
         } catch (\Exception $e) {
             $this->logger->error('createFolder failed: ' . $e->getMessage());
-            return ['error' => $e->getMessage()];
+            return ['error' => $this->l10n->t('Não foi possível criar a pasta.')];
         }
     }
 
@@ -1957,7 +1962,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $fromRelPath = trim($fromRelPath, '/');
             $toFolderRelPath = trim($toFolderRelPath, '/');
             if (!str_starts_with($fromRelPath, 'Audiolog/') && $fromRelPath !== 'Audiolog') {
-                return ['error' => 'Origem fora de Audiolog'];
+                return ['error' => $this->l10n->t('Caminho fora de Audiolog/')];
             }
             // Validate destination is a real folder inside Audiolog.
             $destFolder = $this->resolveSafeAudiosFolder($userId, $toFolderRelPath);
@@ -1988,7 +1993,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             ];
         } catch (\Exception $e) {
             $this->logger->error('moveItem failed: ' . $e->getMessage());
-            return ['error' => $e->getMessage()];
+            return ['error' => $this->l10n->t('Não foi possível mover o item.')];
         }
     }
 
@@ -2038,13 +2043,13 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      */
     public function renameRecording(string $userId, string $audioPath, string $newTitle): array {
         if (empty($newTitle)) {
-            return ['error' => 'Título vazio'];
+            return ['error' => $this->l10n->t('Título obrigatório')];
         }
         try {
             // Full relative path: the recording may live in Audiolog/<title>/.
             $audioNode = $this->resolveAudiologFile($userId, $audioPath);
             if ($audioNode === null) {
-                return ['error' => 'Arquivo não encontrado'];
+                return ['error' => $this->l10n->t('Arquivo não encontrado')];
             }
             $folder = $audioNode->getParent();
             $oldName = $audioNode->getName();
@@ -2053,7 +2058,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $ext = pathinfo($oldName, PATHINFO_EXTENSION) ?: 'mp3';
             $safeName = $this->sanitizeFilename($newTitle);
             if (empty($safeName)) {
-                return ['error' => 'Título inválido'];
+                return ['error' => $this->l10n->t('Título inválido')];
             }
 
             $newName = $safeName . '.' . $ext;
@@ -2097,7 +2102,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
         } catch (\Exception $e) {
             $this->logger->error('Erro ao renomear gravação: ' . $e->getMessage());
-            return ['error' => 'Não foi possível renomear a gravação.'];
+            return ['error' => $this->l10n->t('Não foi possível renomear a gravação.')];
         }
     }
 
@@ -2118,16 +2123,16 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         try {
             $relPath = trim($relPath, '/');
             if ($relPath === '' || (!str_starts_with($relPath, 'Audiolog/') && $relPath !== 'Audiolog')) {
-                return ['error' => 'Caminho fora de Audiolog/'];
+                return ['error' => $this->l10n->t('Caminho fora de Audiolog/')];
             }
             foreach (explode('/', $relPath) as $seg) {
                 if ($seg === '..' || $seg === '.') {
-                    return ['error' => 'Caminho inválido'];
+                    return ['error' => $this->l10n->t('Caminho inválido')];
                 }
             }
             // Refuse deleting the root folder itself.
             if ($relPath === 'Audiolog') {
-                return ['error' => 'Não é possível excluir a pasta raiz Audiolog'];
+                return ['error' => $this->l10n->t('Não é possível excluir a pasta raiz Audiolog')];
             }
 
             $userFolder = $this->rootFolder->getUserFolder($userId);
@@ -2169,10 +2174,10 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 'deletedOutputs' => $deletedOutputs
             ];
         } catch (NotFoundException $e) {
-            return ['error' => 'Item não encontrado'];
+            return ['error' => $this->l10n->t('Item não encontrado')];
         } catch (\Exception $e) {
             $this->logger->error('Erro ao excluir: ' . $e->getMessage());
-            return ['error' => $e->getMessage()];
+            return ['error' => $this->l10n->t('Não foi possível excluir o item.')];
         }
     }
 
@@ -2245,7 +2250,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 'success' => true,
                 'path' => $savedPath,
                 'fileId' => $file->getId(),
-                'message' => 'Nota salva com sucesso'
+                'message' => $this->l10n->t('Nota salva com sucesso')
             ];
 
         } catch (\Exception $e) {
@@ -2298,7 +2303,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 'success' => true,
                 'path' => $savedPath,
                 'fileId' => $file->getId(),
-                'message' => 'Documento salvo com sucesso'
+                'message' => $this->l10n->t('Documento salvo com sucesso')
             ];
 
         } catch (\Exception $e) {
@@ -2456,17 +2461,18 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         }
 
         $date = date('Y-m-d_H-i');
-        $filename = "Tarefas_Reuniao_{$date}.md";
+        $filename = $this->sanitizeFilename($this->l10n->t('Tarefas da reunião')) . "_{$date}.md";
+        $undefined = $this->l10n->t('A definir');
 
-        $content = "# Tarefas da Reunião - " . date('d/m/Y H:i') . "\n\n";
-        $content .= "| # | Tarefa | Responsável | Prazo |\n";
+        $content = '# ' . $this->l10n->t('Tarefas da reunião') . ' - ' . date('Y-m-d H:i') . "\n\n";
+        $content .= '| # | ' . $this->l10n->t('Tarefa') . ' | ' . $this->l10n->t('Responsável') . ' | ' . $this->l10n->t('Prazo') . " |\n";
         $content .= "|---|--------|-------------|-------|\n";
 
         foreach ($tasks as $i => $task) {
             $num = $i + 1;
             $title = $task['title'] ?? '';
-            $assignee = $task['assignee'] ?? 'A definir';
-            $dueDate = $task['dueDate'] ?? 'A definir';
+            $assignee = ($task['assignee'] ?? '') !== '' ? $task['assignee'] : $undefined;
+            $dueDate = ($task['dueDate'] ?? '') !== '' ? $task['dueDate'] : $undefined;
             $content .= "| {$num} | {$title} | {$assignee} | {$dueDate} |\n";
         }
 
@@ -2477,7 +2483,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             'success' => true,
             'path' => "Audiolog/{$filename}",
             'count' => count($tasks),
-            'message' => count($tasks) . ' tarefas exportadas para arquivo'
+            'message' => $this->l10n->t('%s tarefa(s) exportada(s) para arquivo', [(string)count($tasks)])
         ];
     }
 }

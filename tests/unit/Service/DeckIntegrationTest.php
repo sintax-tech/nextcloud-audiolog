@@ -59,7 +59,7 @@ class DeckIntegrationTest extends TestCase {
         ];
         $container = $this->createMock(ContainerInterface::class);
         $container->method('get')->willReturnCallback(fn (string $id) => $map[$id]);
-        return new DeckIntegration($this->appManager, $container, new RecordingLogger());
+        return new DeckIntegration($this->appManager, $container, new RecordingLogger(), \OCA\Audiolog\Tests\Unit\Support\TestHelpers::l10n($this));
     }
 
     private function permissions(bool $edit): array {
@@ -128,7 +128,7 @@ class DeckIntegrationTest extends TestCase {
     public function testUnavailableDeckIsRefusedWithoutFallingBackToSql(): void {
         $appManager = $this->createMock(IAppManager::class);
         $appManager->method('isEnabledForUser')->willReturn(false);
-        $integration = new DeckIntegration($appManager, $this->createMock(ContainerInterface::class), new RecordingLogger());
+        $integration = new DeckIntegration($appManager, $this->createMock(ContainerInterface::class), new RecordingLogger(), \OCA\Audiolog\Tests\Unit\Support\TestHelpers::l10n($this));
 
         $this->assertFalse($integration->isAvailable());
         $this->expectException(DeckUnavailableException::class);

@@ -63,6 +63,7 @@ class ApiControllerAsyncUploadTest extends TestCase {
             $request, $this->createMock(AudioService::class), $session, new RecordingLogger(), $crypto,
             $mapper, $jobList, $permissions, $this->createMock(IGroupManager::class), $cfg,
             $redactor, $this->createMock(DeckIntegration::class), TestHelpers::tempManager($this, $this->dir),
+            \OCA\Audiolog\Tests\Unit\Support\TestHelpers::l10n($this),
         );
         $response = $controller->process();
         @unlink($upload);
@@ -75,7 +76,7 @@ class ApiControllerAsyncUploadTest extends TestCase {
 
         $audio = $this->createMock(AudioService::class);
         $audio->method('processAudio')->willThrowException(new \RuntimeException('provider down'));
-        $bg = new ProcessAudioJob($this->createMock(ITimeFactory::class), $audio, $mapper, new RecordingLogger(), $redactor);
+        $bg = new ProcessAudioJob($this->createMock(ITimeFactory::class), $audio, $mapper, new RecordingLogger(), $redactor, \OCA\Audiolog\Tests\Unit\Support\TestHelpers::l10n($this));
         (new \ReflectionMethod($bg, 'run'))->invoke($bg, $queued);
 
         $this->assertSame('failed', $job->getStatus());

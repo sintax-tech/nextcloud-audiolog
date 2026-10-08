@@ -57,6 +57,7 @@ class ApiControllerProviderErrorTest extends TestCase {
             new SecretRedactor($config, $crypto),
             $this->createMock(\OCA\Audiolog\Service\DeckIntegration::class),
             $this->createMock(\OCP\ITempManager::class),
+            \OCA\Audiolog\Tests\Unit\Support\TestHelpers::l10n($this),
         );
         $response = $controller->process();
         @unlink($tmp);

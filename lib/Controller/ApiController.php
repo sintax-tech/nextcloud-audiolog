@@ -24,6 +24,7 @@ use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\BackgroundJob\IJobList;
 use OCP\IConfig;
 use OCP\IGroupManager;
+use OCP\IL10N;
 use OCP\IRequest;
 use OCP\ITempManager;
 use OCP\IUserSession;
@@ -43,7 +44,8 @@ class ApiController extends Controller {
         private IConfig $config,
         private SecretRedactor $redactor,
         private DeckIntegration $deck,
-        private ITempManager $tempManager
+        private ITempManager $tempManager,
+        private IL10N $l10n
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -62,10 +64,10 @@ class ApiController extends Controller {
     private function requireAccess(): JSONResponse|string {
         $userId = $this->userSession->getUser()?->getUID();
         if (!$userId) {
-            return new JSONResponse(['error' => 'Nao autenticado'], Http::STATUS_UNAUTHORIZED);
+            return new JSONResponse(['error' => $this->l10n->t('Não autenticado')], Http::STATUS_UNAUTHORIZED);
         }
         if (!$this->permissions->userHasAccess($userId)) {
-            return new JSONResponse(['error' => 'Acesso negado pelas configurações de grupo do app.'], Http::STATUS_FORBIDDEN);
+            return new JSONResponse(['error' => $this->l10n->t('Acesso negado pelas configurações de grupo do app.')], Http::STATUS_FORBIDDEN);
         }
         return $userId;
     }
@@ -87,7 +89,7 @@ class ApiController extends Controller {
         $logContext = $message === $e->getMessage() ? ['exception' => $e] : [];
         $this->logger->error('Audiolog ' . $context . ': ' . $message, $logContext);
         return new JSONResponse(
-            ['error' => 'Erro interno ao processar sua solicitação. Verifique os logs do servidor para detalhes.'],
+            ['error' => $this->l10n->t('Erro interno ao processar sua solicitação. Verifique os logs do servidor para detalhes.')],
             Http::STATUS_INTERNAL_SERVER_ERROR
         );
     }
@@ -107,25 +109,25 @@ class ApiController extends Controller {
     private function validateAudiologPath(string $path, bool $allowRoot = false): ?JSONResponse {
         $path = trim($path, '/');
         if ($path === '') {
-            return new JSONResponse(['error' => 'Caminho obrigatório'], Http::STATUS_BAD_REQUEST);
+            return new JSONResponse(['error' => $this->l10n->t('Caminho obrigatório')], Http::STATUS_BAD_REQUEST);
         }
         // Reject scheme prefixes, backslashes, NUL bytes — none of these
         // belong in a NextCloud relative path.
         if (str_contains($path, "\0") || str_contains($path, '\\') || preg_match('#^[a-z][a-z0-9+\-.]*://#i', $path)) {
-            return new JSONResponse(['error' => 'Caminho inválido'], Http::STATUS_BAD_REQUEST);
+            return new JSONResponse(['error' => $this->l10n->t('Caminho inválido')], Http::STATUS_BAD_REQUEST);
         }
         // Must live under Audiolog/.
         $isRoot = $path === 'Audiolog';
         if (!$isRoot && !str_starts_with($path, 'Audiolog/')) {
-            return new JSONResponse(['error' => 'Caminho fora de Audiolog/'], Http::STATUS_BAD_REQUEST);
+            return new JSONResponse(['error' => $this->l10n->t('Caminho fora de Audiolog/')], Http::STATUS_BAD_REQUEST);
         }
         if ($isRoot && !$allowRoot) {
-            return new JSONResponse(['error' => 'Operação não permitida na raiz Audiolog'], Http::STATUS_BAD_REQUEST);
+            return new JSONResponse(['error' => $this->l10n->t('Operação não permitida na raiz Audiolog')], Http::STATUS_BAD_REQUEST);
         }
         // No "." or ".." segments after normalization.
         foreach (explode('/', $path) as $seg) {
             if ($seg === '..' || $seg === '.' || $seg === '') {
-                return new JSONResponse(['error' => 'Caminho inválido'], Http::STATUS_BAD_REQUEST);
+                return new JSONResponse(['error' => $this->l10n->t('Caminho inválido')], Http::STATUS_BAD_REQUEST);
             }
         }
         return null;
@@ -144,12 +146,12 @@ class ApiController extends Controller {
         $tmp = (string)($file['tmp_name'] ?? '');
         $size = is_file($tmp) ? (int)filesize($tmp) : 0;
         if ($size <= 0) {
-            return new JSONResponse(['error' => 'Arquivo de áudio vazio ou ilegível'], Http::STATUS_BAD_REQUEST);
+            return new JSONResponse(['error' => $this->l10n->t('Arquivo de áudio vazio ou ilegível')], Http::STATUS_BAD_REQUEST);
         }
         $maxMb = (int)$this->config->getAppValue(Application::APP_ID, 'max_file_size', '100');
         if ($enforceMaxSize && $maxMb > 0 && $size > $maxMb * 1024 * 1024) {
             return new JSONResponse(
-                ['error' => 'O arquivo excede o tamanho máximo de ' . $maxMb . ' MB'],
+                ['error' => $this->l10n->t('O arquivo excede o tamanho máximo de %s MB', [(string)$maxMb])],
                 Http::STATUS_REQUEST_ENTITY_TOO_LARGE
             );
         }
@@ -158,7 +160,7 @@ class ApiController extends Controller {
             $detected = 'audio/ogg';
         }
         if (!str_starts_with($detected, 'audio/') && !str_starts_with($detected, 'video/')) {
-            return new JSONResponse(['error' => 'O arquivo enviado não é de áudio ou vídeo'], Http::STATUS_UNSUPPORTED_MEDIA_TYPE);
+            return new JSONResponse(['error' => $this->l10n->t('O arquivo enviado não é de áudio ou vídeo')], Http::STATUS_UNSUPPORTED_MEDIA_TYPE);
         }
         // Keep the browser's type when it is a media type (a MediaRecorder
         // "audio/webm" is sniffed as video/webm and must stay audio); fall
@@ -218,7 +220,7 @@ class ApiController extends Controller {
                 } else {
                     $file = $this->request->getUploadedFile('audio');
                     if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-                        return new JSONResponse(['error' => 'Arquivo de áudio não fornecido'], Http::STATUS_BAD_REQUEST);
+                        return new JSONResponse(['error' => $this->l10n->t('Arquivo de áudio não fornecido')], Http::STATUS_BAD_REQUEST);
                     }
                     $mimeType = $this->validateUpload($file);
                     if ($mimeType instanceof JSONResponse) { return $mimeType; }
@@ -231,7 +233,7 @@ class ApiController extends Controller {
                     if (!@move_uploaded_file($file['tmp_name'], $stable)) {
                         // Fallback for environments where move_uploaded_file is restricted
                         if (!@copy($file['tmp_name'], $stable)) {
-                            return new JSONResponse(['error' => 'Falha ao preparar arquivo para processamento assíncrono'], Http::STATUS_INTERNAL_SERVER_ERROR);
+                            return new JSONResponse(['error' => $this->l10n->t('Falha ao preparar arquivo para processamento assíncrono')], Http::STATUS_INTERNAL_SERVER_ERROR);
                         }
                     }
                     @chmod($stable, 0600);
@@ -270,7 +272,7 @@ class ApiController extends Controller {
 
             $file = $this->request->getUploadedFile('audio');
             if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-                return new JSONResponse(['error' => 'Arquivo de áudio não fornecido'], Http::STATUS_BAD_REQUEST);
+                return new JSONResponse(['error' => $this->l10n->t('Arquivo de áudio não fornecido')], Http::STATUS_BAD_REQUEST);
             }
             $mimeType = $this->validateUpload($file);
             if ($mimeType instanceof JSONResponse) { return $mimeType; }
@@ -292,16 +294,12 @@ class ApiController extends Controller {
             return new JSONResponse($result);
 
         } catch (InvalidInputException $e) {
+            // User-fixable input (size, type, daily quota): the message was
+            // built and translated by us, so it is safe to return as is.
             return new JSONResponse(['error' => $e->getMessage()], $e->getHttpStatus());
         } catch (\Throwable $e) {
-            // Rate-limit hits surface as RuntimeException with a "Limite diário"
-            // message — for those, the message is intentional UX (we built it),
-            // so we surface it back to the user. Other failures get the generic
-            // "internal error" wrapper that keeps stacktraces server-side.
-            if (str_starts_with($e->getMessage(), 'Limite diário')) {
-                $this->logger->info('Audiolog rate-limited: ' . $e->getMessage());
-                return new JSONResponse(['error' => $e->getMessage()], 429);
-            }
+            // Everything else gets the generic "internal error" wrapper that
+            // keeps details server-side.
             return $this->errorResponse($e, __FUNCTION__);
         }
     }
@@ -314,11 +312,11 @@ class ApiController extends Controller {
             $userId = $check;
             $job = $this->jobMapper->find($taskId);
             if (!$job) {
-                return new JSONResponse(['error' => 'Task não encontrada'], Http::STATUS_NOT_FOUND);
+                return new JSONResponse(['error' => $this->l10n->t('Tarefa não encontrada')], Http::STATUS_NOT_FOUND);
             }
             // Don't leak other users' jobs.
             if ($job->getUserId() !== $userId) {
-                return new JSONResponse(['error' => 'Acesso negado'], Http::STATUS_FORBIDDEN);
+                return new JSONResponse(['error' => $this->l10n->t('Acesso negado')], Http::STATUS_FORBIDDEN);
             }
             return new JSONResponse([
                 'taskId' => $job->getId(),
@@ -366,7 +364,7 @@ class ApiController extends Controller {
             $audioPath = (string)$this->request->getParam('audioPath', '');
 
             if (empty($content)) {
-                return new JSONResponse(['error' => 'Conteudo vazio'], Http::STATUS_BAD_REQUEST);
+                return new JSONResponse(['error' => $this->l10n->t('Conteúdo vazio')], Http::STATUS_BAD_REQUEST);
             }
 
             // Route to appropriate method based on format
@@ -391,11 +389,11 @@ class ApiController extends Controller {
             $userId = $check;
 
             if (!$this->deck->isAvailable()) {
-                return new JSONResponse(['boards' => [], 'error' => 'Deck não está instalado ou habilitado']);
+                return new JSONResponse(['boards' => [], 'error' => $this->l10n->t('Deck não está instalado ou habilitado')]);
             }
             return new JSONResponse(['boards' => $this->deck->listBoards($userId)]);
         } catch (DeckUnavailableException $e) {
-            return new JSONResponse(['boards' => [], 'error' => 'Deck não está instalado ou habilitado']);
+            return new JSONResponse(['boards' => [], 'error' => $this->l10n->t('Deck não está instalado ou habilitado')]);
         } catch (\Throwable $e) {
             return $this->errorResponse($e, __FUNCTION__);
         }
@@ -413,7 +411,7 @@ class ApiController extends Controller {
             $stackId = $this->request->getParam('stackId');
 
             if (!is_array($tasks) || empty($tasks)) {
-                return new JSONResponse(['error' => 'Nenhuma tarefa fornecida'], Http::STATUS_BAD_REQUEST);
+                return new JSONResponse(['error' => $this->l10n->t('Nenhuma tarefa fornecida')], Http::STATUS_BAD_REQUEST);
             }
 
             $boardIdInt = $boardId !== null && $boardId !== '' ? (int)$boardId : 0;
@@ -430,7 +428,7 @@ class ApiController extends Controller {
             return new JSONResponse([
                 'success' => true,
                 'count' => $count,
-                'message' => $count . ' tarefas criadas no Deck',
+                'message' => $this->l10n->t('%s tarefa(s) criada(s) no Deck', [(string)$count]),
             ]);
         } catch (DeckPartialException $e) {
             $created = $e->getCreated();
@@ -439,20 +437,22 @@ class ApiController extends Controller {
                 'partial' => true,
                 'count' => count($created),
                 'created' => $created,
-                'error' => 'Falha no Deck depois de criar ' . count($created) . ' de ' . $e->getTotal()
-                    . ' cartões (' . implode(', ', $created) . '). Não repita a exportação inteira para não duplicar esses cartões.',
+                'error' => $this->l10n->t(
+                    'Falha no Deck depois de criar %1$s de %2$s cartões (%3$s). Não repita a exportação inteira para não duplicar esses cartões.',
+                    [(string)count($created), (string)$e->getTotal(), implode(', ', $created)]
+                ),
             ], Http::STATUS_MULTI_STATUS);
         } catch (DeckPermissionException $e) {
             return match ($e->getReason()) {
                 DeckPermissionException::REASON_ARCHIVED => new JSONResponse(
-                    ['error' => 'O quadro do Deck está arquivado. Desarquive-o ou escolha outro quadro.'], Http::STATUS_CONFLICT),
+                    ['error' => $this->l10n->t('O quadro do Deck está arquivado. Desarquive-o ou escolha outro quadro.')], Http::STATUS_CONFLICT),
                 DeckPermissionException::REASON_NOT_FOUND => new JSONResponse(
-                    ['error' => 'Quadro ou lista do Deck não encontrados.'], Http::STATUS_NOT_FOUND),
+                    ['error' => $this->l10n->t('Quadro ou lista do Deck não encontrados.')], Http::STATUS_NOT_FOUND),
                 default => new JSONResponse(
-                    ['error' => 'Sem permissão para criar cartões neste quadro do Deck.'], Http::STATUS_FORBIDDEN),
+                    ['error' => $this->l10n->t('Sem permissão para criar cartões neste quadro do Deck.')], Http::STATUS_FORBIDDEN),
             };
         } catch (DeckUnavailableException $e) {
-            return new JSONResponse(['error' => 'Deck não está instalado ou habilitado.'], Http::STATUS_FAILED_DEPENDENCY);
+            return new JSONResponse(['error' => $this->l10n->t('Deck não está instalado ou habilitado')], Http::STATUS_FAILED_DEPENDENCY);
         } catch (\Throwable $e) {
             return $this->errorResponse($e, __FUNCTION__);
         }
@@ -467,7 +467,7 @@ class ApiController extends Controller {
 
             $file = $this->request->getUploadedFile('audio');
             if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-                return new JSONResponse(['error' => 'Arquivo de audio nao fornecido'], Http::STATUS_BAD_REQUEST);
+                return new JSONResponse(['error' => $this->l10n->t('Arquivo de áudio não fornecido')], Http::STATUS_BAD_REQUEST);
             }
             $mimeType = $this->validateUpload($file, false);
             if ($mimeType instanceof JSONResponse) { return $mimeType; }
@@ -515,12 +515,12 @@ class ApiController extends Controller {
             $parent = (string)$this->request->getParam('parent', '');
             $name = trim((string)$this->request->getParam('name', ''));
             if ($name === '') {
-                return new JSONResponse(['error' => 'Nome obrigatório'], Http::STATUS_BAD_REQUEST);
+                return new JSONResponse(['error' => $this->l10n->t('Nome obrigatório')], Http::STATUS_BAD_REQUEST);
             }
             // Block ".."/"." in the new folder name. The parent path may be
             // empty (root) or a sub-path under Audiolog/ — validate when set.
             if (str_contains($name, '/') || str_contains($name, '\\') || $name === '.' || $name === '..') {
-                return new JSONResponse(['error' => 'Nome inválido'], Http::STATUS_BAD_REQUEST);
+                return new JSONResponse(['error' => $this->l10n->t('Nome inválido')], Http::STATUS_BAD_REQUEST);
             }
             if ($parent !== '' && ($err = $this->validateAudiologPath($parent, true))) {
                 return $err;
@@ -541,7 +541,7 @@ class ApiController extends Controller {
             $from = (string)$this->request->getParam('from', '');
             $to = (string)$this->request->getParam('to', '');
             if (empty($from)) {
-                return new JSONResponse(['error' => 'Origem obrigatória'], Http::STATUS_BAD_REQUEST);
+                return new JSONResponse(['error' => $this->l10n->t('Origem obrigatória')], Http::STATUS_BAD_REQUEST);
             }
             if ($err = $this->validateAudiologPath($from)) { return $err; }
             // Destination folder may be the literal "Audiolog" root.
@@ -579,7 +579,7 @@ class ApiController extends Controller {
 
             if ($err = $this->validateAudiologPath($path)) { return $err; }
             if (empty($newTitle)) {
-                return new JSONResponse(['error' => 'Título obrigatório'], Http::STATUS_BAD_REQUEST);
+                return new JSONResponse(['error' => $this->l10n->t('Título obrigatório')], Http::STATUS_BAD_REQUEST);
             }
 
             $result = $this->audioService->renameRecording($userId, $path, $newTitle);
@@ -610,7 +610,7 @@ class ApiController extends Controller {
 
             $enabled = $config->getAppValue($appName, 'enable_realtime_stt', 'false') === 'true';
             if (!$enabled) {
-                return new JSONResponse(['error' => 'Transcrição ao vivo desabilitada nas configurações.'], Http::STATUS_FORBIDDEN);
+                return new JSONResponse(['error' => $this->l10n->t('Transcrição ao vivo desabilitada nas configurações.')], Http::STATUS_FORBIDDEN);
             }
 
             $provider = $config->getAppValue($appName, 'realtime_stt_provider', 'web-speech');
@@ -629,7 +629,7 @@ class ApiController extends Controller {
                 $sttKey = $this->crypto->decrypt($config->getAppValue($appName, 'google_stt_api_key', ''));
                 $apiKey = $this->crypto->decrypt($config->getAppValue($appName, 'api_key', ''));
                 if (empty($sttKey) && empty($apiKey)) {
-                    return new JSONResponse(['error' => 'Nenhuma chave de API disponível para Speech-to-Text.'], Http::STATUS_FAILED_DEPENDENCY);
+                    return new JSONResponse(['error' => $this->l10n->t('Nenhuma chave de API disponível para Speech-to-Text.')], Http::STATUS_FAILED_DEPENDENCY);
                 }
                 $googleLang = match ($language) {
                     'en' => 'en-US',
@@ -649,7 +649,7 @@ class ApiController extends Controller {
             return new JSONResponse([
                 'provider' => 'web-speech',
                 'language' => $language,
-                'note' => 'Gemini Live não é mais suportado neste app. Usando Web Speech como fallback.',
+                'note' => $this->l10n->t('Gemini Live não é mais suportado neste app. Usando Web Speech como fallback.'),
             ]);
         } catch (\Throwable $e) {
             return $this->errorResponse($e, __FUNCTION__);
@@ -680,7 +680,7 @@ class ApiController extends Controller {
 
             $enabled = $config->getAppValue($appName, 'enable_realtime_stt', 'false') === 'true';
             if (!$enabled) {
-                return new JSONResponse(['error' => 'Transcrição ao vivo desabilitada.'], Http::STATUS_FORBIDDEN);
+                return new JSONResponse(['error' => $this->l10n->t('Transcrição ao vivo desabilitada.')], Http::STATUS_FORBIDDEN);
             }
 
             // Some key must be configured; the proxy call itself reads it
@@ -688,19 +688,19 @@ class ApiController extends Controller {
             $sttKey = $this->crypto->decrypt($config->getAppValue($appName, 'google_stt_api_key', ''));
             $apiKey = $this->crypto->decrypt($config->getAppValue($appName, 'api_key', ''));
             if ($sttKey === '' && $apiKey === '') {
-                return new JSONResponse(['error' => 'Sem chave de API configurada para STT.'], Http::STATUS_FAILED_DEPENDENCY);
+                return new JSONResponse(['error' => $this->l10n->t('Sem chave de API configurada para STT.')], Http::STATUS_FAILED_DEPENDENCY);
             }
 
             $audioB64 = (string)$this->request->getParam('audio', '');
             $cfg = $this->request->getParam('config', null);
             if ($audioB64 === '' || !is_array($cfg)) {
-                return new JSONResponse(['error' => 'audio/config obrigatórios'], Http::STATUS_BAD_REQUEST);
+                return new JSONResponse(['error' => $this->l10n->t('audio/config obrigatórios')], Http::STATUS_BAD_REQUEST);
             }
             // Cap chunk size so a single user can't tie up the server with
             // multi-MB requests on every keypress. ~1.5 MB ≈ ~45s of LINEAR16
             // 16kHz mono, well above any sane chunking cadence.
             if (strlen($audioB64) > 2 * 1024 * 1024) {
-                return new JSONResponse(['error' => 'Chunk muito grande'], Http::STATUS_BAD_REQUEST);
+                return new JSONResponse(['error' => $this->l10n->t('Trecho de áudio muito grande')], Http::STATUS_BAD_REQUEST);
             }
 
             // Sanitize the config — only allow a small known-safe subset of
