@@ -6,6 +6,7 @@ namespace OCA\Audiolog\Service;
 use OCA\Audiolog\AppInfo\Application;
 use OCA\Audiolog\Db\Job;
 use OCA\Audiolog\Db\JobMapper;
+use OCA\Audiolog\Exception\InvalidInputException;
 use OCA\Audiolog\Exception\ProviderException;
 use OCP\Http\Client\IClientService;
 use OCP\Files\IRootFolder;
@@ -1268,7 +1269,12 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $file = $userFolder->get($path);
 
             if (!($file instanceof \OCP\Files\File)) {
-                throw new \RuntimeException('O caminho especificado não é um arquivo');
+                throw new InvalidInputException('O caminho especificado não é um arquivo');
+            }
+
+            $maxMb = (int)$this->config->getAppValue($this->appName, 'max_file_size', '100');
+            if ($maxMb > 0 && $file->getSize() > $maxMb * 1024 * 1024) {
+                throw new InvalidInputException('O arquivo excede o tamanho máximo de ' . $maxMb . ' MB', 413);
             }
 
             $audioContent = $file->getContent();
@@ -1278,7 +1284,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
             // Validate it's an audio or video file
             if (!str_starts_with($mimeType, 'audio/') && !str_starts_with($mimeType, 'video/')) {
-                throw new \RuntimeException('O arquivo selecionado não é um arquivo de áudio ou vídeo');
+                throw new InvalidInputException('O arquivo selecionado não é um arquivo de áudio ou vídeo', 415);
             }
 
             // If it's a video, extract audio first

@@ -9,6 +9,7 @@ use OCA\Audiolog\Db\Job;
 use OCA\Audiolog\Db\JobMapper;
 use OCA\Audiolog\Exception\DeckPermissionException;
 use OCA\Audiolog\Exception\DeckUnavailableException;
+use OCA\Audiolog\Exception\InvalidInputException;
 use OCA\Audiolog\Service\AudioService;
 use OCA\Audiolog\Service\CryptoHelper;
 use OCA\Audiolog\Service\DeckIntegration;
@@ -127,6 +128,43 @@ class ApiController extends Controller {
         return null;
     }
 
+    /**
+     * Validate an uploaded audio/video file: size against the admin's
+     * `max_file_size` (MB, 0 = unlimited) and type detected from the bytes
+     * with finfo (the client-sent type is not trusted).
+     *
+     * Returns the MIME type to process the file with, or the error response.
+     */
+    private function validateUpload(array $file): JSONResponse|string {
+        $tmp = (string)($file['tmp_name'] ?? '');
+        $size = is_file($tmp) ? (int)filesize($tmp) : 0;
+        if ($size <= 0) {
+            return new JSONResponse(['error' => 'Arquivo de áudio vazio ou ilegível'], Http::STATUS_BAD_REQUEST);
+        }
+        $maxMb = (int)$this->config->getAppValue(Application::APP_ID, 'max_file_size', '100');
+        if ($maxMb > 0 && $size > $maxMb * 1024 * 1024) {
+            return new JSONResponse(
+                ['error' => 'O arquivo excede o tamanho máximo de ' . $maxMb . ' MB'],
+                Http::STATUS_REQUEST_ENTITY_TOO_LARGE
+            );
+        }
+        $detected = (string)(new \finfo(FILEINFO_MIME_TYPE))->file($tmp);
+        if ($detected === 'application/ogg') {
+            $detected = 'audio/ogg';
+        }
+        if (!str_starts_with($detected, 'audio/') && !str_starts_with($detected, 'video/')) {
+            return new JSONResponse(['error' => 'O arquivo enviado não é de áudio ou vídeo'], Http::STATUS_UNSUPPORTED_MEDIA_TYPE);
+        }
+        // Keep the browser's type when it is a media type (a MediaRecorder
+        // "audio/webm" is sniffed as video/webm and must stay audio); fall
+        // back to the sniffed one otherwise.
+        $clientType = strtolower((string)($file['type'] ?? ''));
+        if (str_starts_with($clientType, 'audio/') || str_starts_with($clientType, 'video/')) {
+            return $clientType;
+        }
+        return $detected;
+    }
+
     #[NoAdminRequired]
     public function process(): JSONResponse {
         try {
@@ -177,6 +215,8 @@ class ApiController extends Controller {
                     if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
                         return new JSONResponse(['error' => 'Arquivo de áudio não fornecido'], Http::STATUS_BAD_REQUEST);
                     }
+                    $mimeType = $this->validateUpload($file);
+                    if ($mimeType instanceof JSONResponse) { return $mimeType; }
                     // Move the uploaded file to a stable location since the
                     // request's tmp file goes away when the request ends.
                     $stable = sys_get_temp_dir() . '/audiolog_async_' . uniqid('', true) . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', $file['name']);
@@ -190,7 +230,7 @@ class ApiController extends Controller {
                     $argument['kind'] = 'process';
                     $argument['tmpPath'] = $stable;
                     $argument['filename'] = $file['name'];
-                    $argument['mimeType'] = $file['type'] ?: 'application/octet-stream';
+                    $argument['mimeType'] = $mimeType;
                 }
 
                 $job = $this->jobMapper->insert($job);
@@ -223,6 +263,8 @@ class ApiController extends Controller {
             if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
                 return new JSONResponse(['error' => 'Arquivo de áudio não fornecido'], Http::STATUS_BAD_REQUEST);
             }
+            $mimeType = $this->validateUpload($file);
+            if ($mimeType instanceof JSONResponse) { return $mimeType; }
 
             // Log size + types but NOT the filename (treat as PII).
             $this->logger->info('Audiolog: processing audio for user ' . $userId
@@ -231,7 +273,7 @@ class ApiController extends Controller {
             $result = $this->audioService->processAudio(
                 $file['tmp_name'],
                 $file['name'],
-                $file['type'],
+                $mimeType,
                 $prompt,
                 $outputTypes,
                 $userId,
@@ -240,6 +282,8 @@ class ApiController extends Controller {
 
             return new JSONResponse($result);
 
+        } catch (InvalidInputException $e) {
+            return new JSONResponse(['error' => $e->getMessage()], $e->getHttpStatus());
         } catch (\Throwable $e) {
             // Rate-limit hits surface as RuntimeException with a "Limite diário"
             // message — for those, the message is intentional UX (we built it),
@@ -437,6 +481,8 @@ class ApiController extends Controller {
             if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
                 return new JSONResponse(['error' => 'Arquivo de audio nao fornecido'], Http::STATUS_BAD_REQUEST);
             }
+            $mimeType = $this->validateUpload($file);
+            if ($mimeType instanceof JSONResponse) { return $mimeType; }
 
             $title = $this->request->getParam('title', '');
             $content = file_get_contents($file['tmp_name']);
