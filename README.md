@@ -2,7 +2,7 @@
 
 Record, transcribe and process audio with AI models — directly inside Nextcloud.
 
-[![Nextcloud](https://img.shields.io/badge/Nextcloud-28%E2%80%9333-blue)](https://apps.nextcloud.com/apps/audiolog)
+[![Nextcloud](https://img.shields.io/badge/Nextcloud-28%E2%80%9335-blue)](https://apps.nextcloud.com/apps/audiolog)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![PHP 8.1+](https://img.shields.io/badge/PHP-8.1%2B-purple)](https://www.php.net/)
 
@@ -46,7 +46,7 @@ The app deliberately keeps providers isolated: pick OpenAI and the app won't eve
 
 ## Requirements
 
-- **Nextcloud 28 → 33**
+- **Nextcloud 28 → 35**
 - **PHP 8.1+** with `curl`, `json`, `fileinfo`, `mbstring`, `openssl`
 - **`ffmpeg`** and **`ffprobe`** on the server PATH (used for audio length probing and video → audio extraction)
 - A valid API key for at least one provider, **or** a working local Ollama
@@ -159,7 +159,7 @@ Os provedores são isolados: se você escolher OpenAI, o app **não chama Google
 
 ### Requisitos
 
-- **Nextcloud 28 → 33**
+- **Nextcloud 28 → 35**
 - **PHP 8.1+** com `curl`, `json`, `fileinfo`, `mbstring`, `openssl`
 - **`ffmpeg`** e **`ffprobe`** no PATH do servidor
 - Chave de API de pelo menos um provedor **ou** um Ollama local funcionando
