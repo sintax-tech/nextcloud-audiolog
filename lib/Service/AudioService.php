@@ -1680,7 +1680,14 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         return array_slice($tasks, 0, 20);
     }
 
-    private const TASK_HEADER = '/^(tarefas?|tasks?|tareas?|a[cç][aã]o|a[cç][oõ]es|action( items?)?|acci[oó]n)$/iu';
+    /**
+     * Task headings (pt/en/es), shared by the table header cell and the
+     * bullet-section heading so both shapes accept the same names.
+     */
+    private const TASK_HEADINGS = 'tarefas?|tasks?|tareas?|a[cç][aã]o|a[cç][oõ]es|acci[oó]n|acciones'
+        . '|actions?(?: items?)?|action items?|encaminhamentos|pr[oó]ximos? pass?os?|next steps?'
+        . '|pasos siguientes|to-?dos?|pend[eê]ncias';
+    private const TASK_HEADER = '/^(' . self::TASK_HEADINGS . ')$/iu';
 
     /** @return list<string> cells of a markdown table row, or [] if not a row */
     private function tableCells(string $line): array {
@@ -1739,7 +1746,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 $heading = trim(str_replace('**', '', $m[1]), " :\t");
             }
             if ($heading !== null) {
-                $inSection = (bool)preg_match('/^(tarefas?|tasks?|tareas?|encaminhamentos|action items|next steps|pr[oó]ximos pasos)\b/iu', $heading);
+                $inSection = (bool)preg_match('/^(' . self::TASK_HEADINGS . ')(?![\p{L}])/iu', $heading);
                 continue;
             }
             if (!$inSection || !preg_match('/^\s*[-*•]\s+(.+)$/u', $line, $m)) {

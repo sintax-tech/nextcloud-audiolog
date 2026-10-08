@@ -53,4 +53,29 @@ class ExtractTasksTest extends TestCase {
     public function testBulletsOutsideTasksSectionAreIgnored(): void {
         $this->assertSame([], $this->extract("## Pauta\n- Orçamento 2026\n- Contratações"));
     }
+
+    /** R11: the same task headings count for bullet sections and tables, in pt/en/es. */
+    /** @dataProvider taskHeadings */
+    public function testBulletSectionHeadingsInThreeLanguages(string $heading): void {
+        $text = "## Resumo\n- não é tarefa\n\n## {$heading}\n- Enviar a proposta - Responsável: Ana\n";
+        $this->assertSame([['title' => 'Enviar a proposta', 'assignee' => 'Ana', 'dueDate' => '']], $this->extract($text));
+    }
+
+    public static function taskHeadings(): array {
+        return array_map(fn ($h) => [$h], [
+            'Próximos passos', 'Ações', 'Acoes', 'Encaminhamentos', 'Tarefas',
+            'Next steps', 'Action items', 'Actions', 'Tasks',
+            'Próximos pasos', 'Acciones', 'Tareas',
+        ]);
+    }
+
+    /** @dataProvider tableHeaders */
+    public function testTableHeadersInThreeLanguages(string $header): void {
+        $text = "| {$header} | Responsável | Prazo |\n|---|---|---|\n| Enviar a proposta | Ana | sexta |\n";
+        $this->assertSame([['title' => 'Enviar a proposta', 'assignee' => 'Ana', 'dueDate' => 'sexta']], $this->extract($text));
+    }
+
+    public static function tableHeaders(): array {
+        return array_map(fn ($h) => [$h], ['Tarefa', 'Ação', 'Próximo passo', 'Task', 'Action item', 'Next step', 'Tarea', 'Acción', 'Próximo paso']);
+    }
 }
