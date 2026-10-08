@@ -305,7 +305,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             } catch (\Throwable $e) {
                 // Fallback to inline only if file is small enough — inline cap is ~20MB.
                 if ($size < 18 * 1024 * 1024) {
-                    $this->logger->warning('Audiolog: Files API failed, falling back to inline_data: ' . $e->getMessage());
+                    $this->logger->warning('Audiolog: Files API failed, falling back to inline_data: ' . $this->redactor->redact($e->getMessage()));
                     return $this->processWithGeminiInline($audioContent, $mimeType, $prompt);
                 }
                 throw $e;
@@ -431,7 +431,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             try {
                 $this->deleteGeminiFile($fileName, $baseUrl);
             } catch (\Throwable $cleanupErr) {
-                $this->logger->warning('Audiolog: file cleanup failed for ' . $fileName . ': ' . $cleanupErr->getMessage());
+                $this->logger->warning('Audiolog: file cleanup failed for ' . $fileName . ': ' . $this->redactor->redact($cleanupErr->getMessage()));
             }
         }
     }
@@ -775,7 +775,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 }
                 $this->logger->warning('AudioLog: Google STT sync failed, falling back to longrunning: ' . $this->redactor->redact((string)json_encode($data['error'])));
             } catch (\Throwable $e) {
-                $this->logger->warning('AudioLog: Google STT sync threw, falling back to longrunning: ' . $e->getMessage());
+                $this->logger->warning('AudioLog: Google STT sync threw, falling back to longrunning: ' . $this->redactor->redact($e->getMessage()));
             }
         }
 
@@ -795,7 +795,8 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         $deadline = time() + (30 * 60); // 30min hard cap
         while (time() < $deadline) {
             sleep(5);
-            $statusUrl = 'https://speech.googleapis.com/v1/operations/' . urlencode($opName);
+            // Same API version that created the operation (v1p1beta1 has its own operations.get).
+            $statusUrl = 'https://speech.googleapis.com/v1p1beta1/operations/' . urlencode($opName);
             $statusResp = $this->providerRequest('GET', $statusUrl, ['headers' => $headers, 'timeout' => 30]);
             $status = json_decode($statusResp->getBody(), true) ?: [];
             if (isset($status['error'])) {
