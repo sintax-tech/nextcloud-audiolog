@@ -24,21 +24,23 @@
         'gemini': ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-3-flash-preview', 'gemini-3.1-pro-preview']
     };
 
-    // Provider URL hints
-    const urlHints = {
-        'ollama': 'URL do servidor Ollama (padrão: http://localhost:11434)',
-        'openai': 'URL da API OpenAI (padrão: https://api.openai.com/v1)',
-        'gemini': 'URL da API Google AI (padrão: https://generativelanguage.googleapis.com)'
-    };
-
-    // Model hints
-    const modelHints = {
-        'ollama': 'Modelos Whisper para transcrição local',
-        'openai': 'whisper-1 para transcrição, gpt-4o para análise avançada',
-        'gemini': 'Gemini 2.5+ suporta áudio nativo. Recomendado: gemini-2.5-flash (econômico) ou gemini-2.5-pro (qualidade).'
-    };
-
     document.addEventListener('DOMContentLoaded', function() {
+        // Provider URL hints (translated once the page's l10n is loaded).
+        const urlHints = {
+            'ollama': t('audiolog', 'URL do servidor Ollama (padrão: {url})', { url: providerUrls.ollama }),
+            'openai': t('audiolog', 'URL da API OpenAI (padrão: {url})', { url: providerUrls.openai }),
+            'gemini': t('audiolog', 'URL da API Google AI (padrão: {url})', { url: providerUrls.gemini })
+        };
+
+        // Model hints
+        const modelHints = {
+            'ollama': t('audiolog', 'Modelos Whisper para transcrição local'),
+            'openai': t('audiolog', 'whisper-1 para transcrição, gpt-4o para análise avançada'),
+            'gemini': t('audiolog', 'Gemini 2.5+ suporta áudio nativo. Recomendado: gemini-2.5-flash (econômico) ou gemini-2.5-pro (qualidade).')
+        };
+        const textShow = t('audiolog', 'Mostrar');
+        const textHide = t('audiolog', 'Ocultar');
+
         const form = document.getElementById('assistaudio-settings-form');
         const providerSelect = document.getElementById('ai_provider');
         const urlInput = document.getElementById('ai_url');
@@ -110,13 +112,13 @@
         toggleApiKey.addEventListener('click', function() {
             if (apiKeyInput.type === 'password') {
                 apiKeyInput.type = 'text';
-                this.textContent = 'Ocultar';
+                this.textContent = textHide;
             } else {
                 apiKeyInput.type = 'password';
-                this.textContent = 'Mostrar';
+                this.textContent = textShow;
             }
         });
-        toggleApiKey.textContent = 'Mostrar';
+        toggleApiKey.textContent = textShow;
 
         // Same pattern for the Google STT key toggle (when present).
         const toggleStt = document.getElementById('toggle-stt-key');
@@ -126,10 +128,10 @@
             toggleStt.addEventListener('click', () => {
                 if (sttKeyInput.type === 'password') {
                     sttKeyInput.type = 'text';
-                    if (sttBtnText) sttBtnText.textContent = 'Ocultar';
+                    if (sttBtnText) sttBtnText.textContent = textHide;
                 } else {
                     sttKeyInput.type = 'password';
-                    if (sttBtnText) sttBtnText.textContent = 'Mostrar';
+                    if (sttBtnText) sttBtnText.textContent = textShow;
                 }
             });
         }
@@ -152,7 +154,7 @@
         // Test connection
         testButton.addEventListener('click', async function() {
             testButton.disabled = true;
-            testButton.querySelector('.button-text').textContent = 'Testando...';
+            testButton.querySelector('.button-text').textContent = t('audiolog', 'Testando...');
 
             try {
                 const response = await fetch(OC.generateUrl('/apps/audiolog/settings/test'), {
@@ -168,10 +170,10 @@
                 showStatus(result.message, result.status === 'success' ? 'success' : 'error');
 
             } catch (err) {
-                showStatus('Erro ao testar conexão: ' + err.message, 'error');
+                showStatus(t('audiolog', 'Erro ao testar conexão:') + ' ' + err.message, 'error');
             } finally {
                 testButton.disabled = false;
-                testButton.querySelector('.button-text').textContent = 'Testar Conexão';
+                testButton.querySelector('.button-text').textContent = t('audiolog', 'Testar Conexão');
             }
         });
 
@@ -182,7 +184,7 @@
             const submitBtn = form.querySelector('button[type="submit"]');
             const submitBtnText = submitBtn.querySelector('.button-text');
             submitBtn.disabled = true;
-            submitBtnText.textContent = 'Salvando...';
+            submitBtnText.textContent = t('audiolog', 'Salvando...');
 
             // Get selected groups from multiselect
             const allowedGroupsSelect = document.getElementById('allowed_groups');
@@ -211,7 +213,6 @@
                 long_audio_split_threshold: val('long_audio_split_threshold', '25'),
                 enable_realtime_stt: checked('enable_realtime_stt'),
                 realtime_stt_provider: val('realtime_stt_provider', 'web-speech'),
-                realtime_stt_model: val('realtime_stt_model', ''),
                 use_google_stt_for_transcription: checked('use_google_stt_for_transcription'),
                 google_stt_api_key: val('google_stt_api_key', ''),
                 analysis_model: val('analysis_model', '')
@@ -230,16 +231,16 @@
                 const result = await response.json();
 
                 if (result.status === 'success') {
-                    showStatus('Configurações salvas com sucesso!', 'success');
+                    showStatus(t('audiolog', 'Configurações salvas com sucesso!'), 'success');
                 } else {
-                    showStatus('Erro ao salvar: ' + (result.message || 'Erro desconhecido'), 'error');
+                    showStatus(t('audiolog', 'Erro ao salvar:') + ' ' + (result.message || t('audiolog', 'Erro desconhecido')), 'error');
                 }
 
             } catch (err) {
-                showStatus('Erro ao salvar configurações: ' + err.message, 'error');
+                showStatus(t('audiolog', 'Erro ao salvar configurações:') + ' ' + err.message, 'error');
             } finally {
                 submitBtn.disabled = false;
-                submitBtnText.textContent = 'Salvar Configurações';
+                submitBtnText.textContent = t('audiolog', 'Salvar Configurações');
             }
         });
 
@@ -249,7 +250,7 @@
         if (btnHealth && healthResults) {
             btnHealth.addEventListener('click', async () => {
                 btnHealth.disabled = true;
-                btnHealth.querySelector('.button-text').textContent = 'Verificando...';
+                btnHealth.querySelector('.button-text').textContent = t('audiolog', 'Verificando...');
                 healthResults.style.display = 'block';
                 healthResults.replaceChildren();
                 try {
@@ -280,11 +281,11 @@
                 } catch (err) {
                     const p = document.createElement('p');
                     p.className = 'healthcheck-error';
-                    p.textContent = 'Erro: ' + err.message;
+                    p.textContent = t('audiolog', 'Erro:') + ' ' + err.message;
                     healthResults.appendChild(p);
                 } finally {
                     btnHealth.disabled = false;
-                    btnHealth.querySelector('.button-text').textContent = 'Verificar saúde do sistema';
+                    btnHealth.querySelector('.button-text').textContent = t('audiolog', 'Verificar saúde do sistema');
                 }
             });
         }

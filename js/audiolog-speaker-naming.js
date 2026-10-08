@@ -137,7 +137,7 @@
                         return;
                     }
 
-                    const namingTitle = (baseTitle || 'Transcrição') + ' (nomeado)';
+                    const namingTitle = (baseTitle || t('audiolog', 'Transcrição')) + ' ' + t('audiolog', '(nomeado)');
                     const resp = await fetch(OC.generateUrl('/apps/audiolog/api/save-notes'), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'requesttoken': OC.requestToken },

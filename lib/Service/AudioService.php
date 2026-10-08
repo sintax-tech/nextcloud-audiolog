@@ -6,12 +6,14 @@ namespace OCA\Audiolog\Service;
 use OCA\Audiolog\AppInfo\Application;
 use OCA\Audiolog\Db\Job;
 use OCA\Audiolog\Db\JobMapper;
-use OCP\App\IAppManager;
+use OCA\Audiolog\Exception\InvalidInputException;
+use OCA\Audiolog\Exception\ProviderException;
 use OCP\Http\Client\IClientService;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCP\IConfig;
-use OCP\IDBConnection;
+use OCP\IL10N;
+use OCP\ITempManager;
 use Psr\Log\LoggerInterface;
 
 // (CryptoHelper is in the same namespace, no use needed)
@@ -26,18 +28,37 @@ class AudioService {
         private IConfig $config,
         private CryptoHelper $crypto,
         private JobMapper $jobMapper,
-        private IAppManager $appManager,
-        private IDBConnection $db
+        private SecretRedactor $redactor,
+        private MediaTools $media,
+        private ITempManager $tempManager,
+        private IL10N $l10n
     ) {
     }
 
     /**
-     * Hand the controller an HTTP client built on Nextcloud's IClientService
-     * so the STT proxy endpoint can use the same connection pool / proxy
-     * settings the rest of the service does.
+     * Live-transcription proxy: forward one LINEAR16 chunk to Google Cloud
+     * Speech-to-Text with the server-side key (dedicated STT key first, the
+     * main key as fallback). The key never reaches the browser.
+     *
+     * @param array<string,mixed> $recognitionConfig already sanitized by the controller
+     * @return array<string,mixed> Google's JSON response
      */
-    public function getHttpClient(): \OCP\Http\Client\IClient {
-        return $this->clientService->newClient();
+    public function recognizeSpeechChunk(array $recognitionConfig, string $audioB64): array {
+        $sttKey = $this->crypto->decrypt($this->config->getAppValue($this->appName, 'google_stt_api_key', ''));
+        $apiKey = $sttKey !== '' ? $sttKey : $this->getApiKey();
+        if ($apiKey === '') {
+            throw new \RuntimeException('Sem chave de API configurada para STT.');
+        }
+        $resp = $this->providerRequest('POST', 'https://speech.googleapis.com/v1p1beta1/speech:recognize', [
+            'json' => ['config' => $recognitionConfig, 'audio' => ['content' => $audioB64]],
+            'headers' => $this->googleHeaders($apiKey, ['Content-Type' => 'application/json']),
+            'timeout' => 30,
+        ]);
+        $data = json_decode((string)$resp->getBody(), true);
+        if (!is_array($data)) {
+            throw new ProviderException('Resposta inválida do STT');
+        }
+        return $data;
     }
 
     /**
@@ -52,9 +73,10 @@ class AudioService {
         $since = time() - (24 * 3600);
         $count = $this->jobMapper->countSince($userId, $since);
         if ($count >= $max) {
-            throw new \RuntimeException(
-                "Limite diário de processamentos atingido ({$count}/{$max}). Tente novamente amanhã ou peça ao admin para aumentar a cota."
-            );
+            throw new InvalidInputException($this->l10n->t(
+                'Limite diário de processamentos atingido (%1$s/%2$s). Tente novamente amanhã ou peça ao administrador para aumentar a cota.',
+                [(string)$count, (string)$max]
+            ), 429);
         }
     }
 
@@ -123,10 +145,41 @@ class AudioService {
     }
 
     /**
-     * Mask API key in URLs for logging (replace ?key=... with ?key=***).
+     * Headers for Google APIs (Gemini and Cloud Speech). The key goes in
+     * `x-goog-api-key`, never in the URL: a `?key=` query string ends up in
+     * Guzzle exception messages, and from there in logs and job.error.
      */
-    private function maskUrl(string $url): string {
-        return preg_replace('/([?&]key=)[^&]+/', '$1***', $url) ?? $url;
+    private function googleHeaders(string $apiKey, array $extra = []): array {
+        return array_merge(['x-goog-api-key' => $apiKey], $extra);
+    }
+
+    /**
+     * Single choke point for outbound provider HTTP calls. Any failure is
+     * rethrown as ProviderException with a redacted message and without the
+     * original exception chained (its message may hold the key).
+     */
+    private function providerRequest(string $method, string $url, array $options): \OCP\Http\Client\IResponse {
+        $client = $this->clientService->newClient();
+        try {
+            return match ($method) {
+                'GET' => $client->get($url, $options),
+                'DELETE' => $client->delete($url, $options),
+                default => $client->post($url, $options),
+            };
+        } catch (\OCP\Http\Client\LocalServerException $e) {
+            throw new ProviderException($this->l10n->t(
+                'O Nextcloud bloqueou o acesso a um endereço local ou da rede interna. Para usar um Ollama local, defina %s no config.php.',
+                ["'allow_local_remote_servers' => true"]
+            ));
+        } catch (\Throwable $e) {
+            throw new ProviderException($this->redactor->redact($e->getMessage()));
+        }
+    }
+
+    /** Error reported inside a provider's JSON body, redacted. */
+    private function providerError(string $prefix, mixed $error): ProviderException {
+        $detail = is_array($error) ? ($error['message'] ?? json_encode($error)) : (string)$error;
+        return new ProviderException($this->redactor->redact($prefix . ': ' . $detail));
     }
 
     /**
@@ -257,7 +310,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             } catch (\Throwable $e) {
                 // Fallback to inline only if file is small enough — inline cap is ~20MB.
                 if ($size < 18 * 1024 * 1024) {
-                    $this->logger->warning('Audiolog: Files API failed, falling back to inline_data: ' . $e->getMessage());
+                    $this->logger->warning('Audiolog: Files API failed, falling back to inline_data: ' . $this->redactor->redact($e->getMessage()));
                     return $this->processWithGeminiInline($audioContent, $mimeType, $prompt);
                 }
                 throw $e;
@@ -273,12 +326,11 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * Only safe for small files (~<20MB total request body).
      */
     private function processWithGeminiInline(string $audioContent, string $mimeType, string $prompt): string {
-        $client = $this->clientService->newClient();
         $apiKey = $this->getApiKey();
         $model = $this->getModel();
         $baseUrl = rtrim($this->getBaseUrl(), '/');
 
-        $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent?key={$apiKey}";
+        $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent";
 
         $audioBase64 = base64_encode($audioContent);
 
@@ -302,16 +354,16 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             ]
         ];
 
-        $response = $client->post($apiUrl, [
+        $response = $this->providerRequest('POST', $apiUrl, [
             'json' => $requestBody,
-            'headers' => ['Content-Type' => 'application/json'],
+            'headers' => $this->googleHeaders($apiKey, ['Content-Type' => 'application/json']),
             'timeout' => 600
         ]);
 
         $result = json_decode($response->getBody(), true);
 
         if (isset($result['error'])) {
-            throw new \RuntimeException('Erro Gemini: ' . ($result['error']['message'] ?? json_encode($result['error'])));
+            throw $this->providerError('Erro Gemini', $result['error']);
         }
 
         $text = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
@@ -331,7 +383,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         $baseUrl = rtrim($this->getBaseUrl(), '/');
         $size = strlen($audioContent);
 
-        $fileResource = $this->uploadGeminiFile($audioContent, $mimeType, $apiKey, $baseUrl);
+        $fileResource = $this->uploadGeminiFile($audioContent, $mimeType, $baseUrl);
         $fileName = $fileResource['name'] ?? null;
         $fileUri = $fileResource['uri'] ?? null;
 
@@ -340,10 +392,9 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         }
 
         try {
-            $this->waitForFileActive($fileName, $apiKey, $baseUrl);
+            $this->waitForFileActive($fileName, $baseUrl);
 
-            $client = $this->clientService->newClient();
-            $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent?key={$apiKey}";
+            $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent";
 
             $requestBody = [
                 'contents' => [
@@ -365,16 +416,16 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 ]
             ];
 
-            $response = $client->post($apiUrl, [
+            $response = $this->providerRequest('POST', $apiUrl, [
                 'json' => $requestBody,
-                'headers' => ['Content-Type' => 'application/json'],
+                'headers' => $this->googleHeaders($apiKey, ['Content-Type' => 'application/json']),
                 'timeout' => 900
             ]);
 
             $result = json_decode($response->getBody(), true);
 
             if (isset($result['error'])) {
-                throw new \RuntimeException('Erro Gemini (Files API): ' . ($result['error']['message'] ?? json_encode($result['error'])));
+                throw $this->providerError('Erro Gemini (Files API)', $result['error']);
             }
 
             $text = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
@@ -383,9 +434,9 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         } finally {
             // Best-effort cleanup; do not let a delete failure mask the real result.
             try {
-                $this->deleteGeminiFile($fileName, $apiKey, $baseUrl);
+                $this->deleteGeminiFile($fileName, $baseUrl);
             } catch (\Throwable $cleanupErr) {
-                $this->logger->warning('Audiolog: file cleanup failed for ' . $fileName . ': ' . $cleanupErr->getMessage());
+                $this->logger->warning('Audiolog: file cleanup failed for ' . $fileName . ': ' . $this->redactor->redact($cleanupErr->getMessage()));
             }
         }
     }
@@ -395,20 +446,19 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * Two-step: start (returns upload URL via X-Goog-Upload-URL header) then upload+finalize.
      * Returns the file resource with name and uri.
      */
-    private function uploadGeminiFile(string $content, string $mimeType, string $apiKey, string $baseUrl): array {
-        $client = $this->clientService->newClient();
+    private function uploadGeminiFile(string $content, string $mimeType, string $baseUrl): array {
         $size = strlen($content);
 
         // Step 1: start
-        $startUrl = "{$baseUrl}/upload/v1beta/files?key={$apiKey}";
-        $startResponse = $client->post($startUrl, [
-            'headers' => [
+        $startUrl = "{$baseUrl}/upload/v1beta/files";
+        $startResponse = $this->providerRequest('POST', $startUrl, [
+            'headers' => $this->googleHeaders($this->getApiKey(), [
                 'X-Goog-Upload-Protocol' => 'resumable',
                 'X-Goog-Upload-Command' => 'start',
                 'X-Goog-Upload-Header-Content-Length' => (string)$size,
                 'X-Goog-Upload-Header-Content-Type' => $mimeType,
                 'Content-Type' => 'application/json',
-            ],
+            ]),
             'body' => json_encode(['file' => ['display_name' => 'assistaudio_' . uniqid('', true)]]),
             'timeout' => 60
         ]);
@@ -427,7 +477,8 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         }
 
         // Step 2: upload bytes and finalize
-        $uploadResponse = $client->post($uploadUrl, [
+        // The upload URL returned by Google is already bound to this session.
+        $uploadResponse = $this->providerRequest('POST', $uploadUrl, [
             'headers' => [
                 'Content-Length' => (string)$size,
                 'X-Goog-Upload-Offset' => '0',
@@ -439,7 +490,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
         $result = json_decode($uploadResponse->getBody(), true);
         if (!is_array($result) || empty($result['file'])) {
-            $this->logger->error('Audiolog: Files API upload returned unexpected payload: ' . substr((string)$uploadResponse->getBody(), 0, 500));
+            $this->logger->error('Audiolog: Files API upload returned unexpected payload: ' . $this->redactor->redact(substr((string)$uploadResponse->getBody(), 0, 500)));
             throw new \RuntimeException('Files API: resposta inesperada no upload');
         }
 
@@ -450,13 +501,13 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * Poll the Files API until the file reaches ACTIVE state. Times out after
      * ~60s of polling. Audio files typically transition in <5s.
      */
-    private function waitForFileActive(string $fileName, string $apiKey, string $baseUrl): void {
-        $client = $this->clientService->newClient();
-        $statusUrl = "{$baseUrl}/v1beta/{$fileName}?key={$apiKey}";
+    private function waitForFileActive(string $fileName, string $baseUrl): void {
+        $statusUrl = "{$baseUrl}/v1beta/{$fileName}";
+        $headers = $this->googleHeaders($this->getApiKey());
         $deadline = time() + 60;
 
         while (time() < $deadline) {
-            $response = $client->get($statusUrl, ['timeout' => 10]);
+            $response = $this->providerRequest('GET', $statusUrl, ['headers' => $headers, 'timeout' => 10]);
             $info = json_decode($response->getBody(), true);
             $state = $info['state'] ?? 'PROCESSING';
 
@@ -473,17 +524,15 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         throw new \RuntimeException('Files API: timeout aguardando arquivo ficar ACTIVE');
     }
 
-    private function deleteGeminiFile(string $fileName, string $apiKey, string $baseUrl): void {
-        $client = $this->clientService->newClient();
-        $deleteUrl = "{$baseUrl}/v1beta/{$fileName}?key={$apiKey}";
-        $client->delete($deleteUrl, ['timeout' => 30]);
+    private function deleteGeminiFile(string $fileName, string $baseUrl): void {
+        $deleteUrl = "{$baseUrl}/v1beta/{$fileName}";
+        $this->providerRequest('DELETE', $deleteUrl, ['headers' => $this->googleHeaders($this->getApiKey()), 'timeout' => 30]);
     }
 
     /**
      * Process audio with Whisper API (Ollama/OpenAI)
      */
     private function processWithWhisper(string $audioContent, string $filename, string $mimeType, string $prompt): string {
-        $client = $this->clientService->newClient();
         $provider = $this->getProvider();
         $apiKey = $this->getApiKey();
         $model = $this->getModel();
@@ -540,12 +589,12 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $requestOptions['headers'] = ['Authorization' => 'Bearer ' . $apiKey];
         }
 
-        $response = $client->post($apiUrl, $requestOptions);
+        $response = $this->providerRequest('POST', $apiUrl, $requestOptions);
         $responseBody = $response->getBody();
         $result = json_decode($responseBody, true);
 
         if (isset($result['error'])) {
-            throw new \RuntimeException('Erro API: ' . ($result['error']['message'] ?? json_encode($result['error'])));
+            throw $this->providerError('Erro API', $result['error']);
         }
 
         return $result['text'] ?? '';
@@ -560,7 +609,6 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * Gemini round-trip.
      */
     private function processWithChatCompletion(string $transcript, string $prompt): string {
-        $client = $this->clientService->newClient();
         $provider = $this->getProvider();
         $apiKey = $this->getApiKey();
         $baseUrl = rtrim($this->getBaseUrl(), '/');
@@ -597,10 +645,10 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         if (!empty($apiKey)) {
             $opts['headers'] = ['Authorization' => 'Bearer ' . $apiKey];
         }
-        $response = $client->post($apiUrl, $opts);
+        $response = $this->providerRequest('POST', $apiUrl, $opts);
         $resp = json_decode($response->getBody(), true);
         if (isset($resp['error'])) {
-            throw new \RuntimeException('Erro API: ' . ($resp['error']['message'] ?? json_encode($resp['error'])));
+            throw $this->providerError('Erro API', $resp['error']);
         }
         return $resp['choices'][0]['message']['content'] ?? '';
     }
@@ -680,7 +728,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         if (empty($apiKey)) {
             throw new \RuntimeException('API key não configurada');
         }
-        $client = $this->clientService->newClient();
+        $headers = $this->googleHeaders($apiKey, ['Content-Type' => 'application/json']);
 
         $language = $this->getLanguage();
         $languageCode = match ($language) {
@@ -720,27 +768,27 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
         if ($useSync) {
             try {
-                $url = "https://speech.googleapis.com/v1p1beta1/speech:recognize?key={$apiKey}";
-                $resp = $client->post($url, [
+                $url = 'https://speech.googleapis.com/v1p1beta1/speech:recognize';
+                $resp = $this->providerRequest('POST', $url, [
                     'json' => $body,
-                    'headers' => ['Content-Type' => 'application/json'],
+                    'headers' => $headers,
                     'timeout' => 120,
                 ]);
                 $data = json_decode($resp->getBody(), true) ?: [];
                 if (!isset($data['error'])) {
                     return $this->formatGoogleSttResults($data);
                 }
-                $this->logger->warning('AudioLog: Google STT sync failed, falling back to longrunning: ' . json_encode($data['error']));
+                $this->logger->warning('AudioLog: Google STT sync failed, falling back to longrunning: ' . $this->redactor->redact((string)json_encode($data['error'])));
             } catch (\Throwable $e) {
-                $this->logger->warning('AudioLog: Google STT sync threw, falling back to longrunning: ' . $e->getMessage());
+                $this->logger->warning('AudioLog: Google STT sync threw, falling back to longrunning: ' . $this->redactor->redact($e->getMessage()));
             }
         }
 
         // Long-running: enqueue, then poll the operation until done.
-        $startUrl = "https://speech.googleapis.com/v1p1beta1/speech:longrunningrecognize?key={$apiKey}";
-        $startResp = $client->post($startUrl, [
+        $startUrl = 'https://speech.googleapis.com/v1p1beta1/speech:longrunningrecognize';
+        $startResp = $this->providerRequest('POST', $startUrl, [
             'json' => $body,
-            'headers' => ['Content-Type' => 'application/json'],
+            'headers' => $headers,
             'timeout' => 120,
         ]);
         $startData = json_decode($startResp->getBody(), true) ?: [];
@@ -752,11 +800,12 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         $deadline = time() + (30 * 60); // 30min hard cap
         while (time() < $deadline) {
             sleep(5);
-            $statusUrl = "https://speech.googleapis.com/v1/operations/" . urlencode($opName) . "?key={$apiKey}";
-            $statusResp = $client->get($statusUrl, ['timeout' => 30]);
+            // Same API version that created the operation (v1p1beta1 has its own operations.get).
+            $statusUrl = 'https://speech.googleapis.com/v1p1beta1/operations/' . urlencode($opName);
+            $statusResp = $this->providerRequest('GET', $statusUrl, ['headers' => $headers, 'timeout' => 30]);
             $status = json_decode($statusResp->getBody(), true) ?: [];
             if (isset($status['error'])) {
-                throw new \RuntimeException('Google STT erro: ' . ($status['error']['message'] ?? json_encode($status['error'])));
+                throw $this->providerError('Google STT erro', $status['error']);
             }
             if (!empty($status['done'])) {
                 if (isset($status['response'])) {
@@ -854,9 +903,9 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         }
 
         // Probe duration. Need a temp file because ffprobe reads from disk.
-        $probeFile = tempnam(sys_get_temp_dir(), 'audiolog_probe_');
-        file_put_contents($probeFile, $audioContent);
+        $probeFile = $this->newTempFile();
         try {
+            file_put_contents($probeFile, $audioContent);
             $duration = $this->probeAudioDuration($probeFile);
         } finally {
             @unlink($probeFile);
@@ -878,46 +927,16 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * isn't available or fails — caller should fall back to single-shot transcribe.
      */
     private function probeAudioDuration(string $audioPath): float {
-        $proc = @proc_open([
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', $audioPath,
-        ], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-
-        if (!is_resource($proc)) {
-            return 0.0;
-        }
-        $out = stream_get_contents($pipes[1]) ?: '';
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        proc_close($proc);
-        return (float)trim($out);
+        [$rc, $out] = $this->media->run($this->media->probeDurationCommand($audioPath), 120);
+        return $rc === 0 ? (float)trim($out) : 0.0;
     }
 
     /**
      * Re-encode a slice of the audio to mp3 mono 16kHz, the smallest format
-     * Gemini will happily transcribe. Uses proc_open with array argv (no shell).
+     * Gemini will happily transcribe.
      */
     private function ffmpegSlice(string $inputPath, float $startSec, float $durationSec, string $outputPath): bool {
-        $proc = @proc_open([
-            'ffmpeg', '-nostdin', '-y',
-            '-ss', sprintf('%.3f', $startSec),
-            '-t', sprintf('%.3f', $durationSec),
-            '-i', $inputPath,
-            '-vn',
-            '-acodec', 'libmp3lame',
-            '-ar', '16000',
-            '-ac', '1',
-            '-q:a', '4',
-            $outputPath,
-        ], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-
-        if (!is_resource($proc)) return false;
-        // drain
-        stream_get_contents($pipes[1]);
-        stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        $rc = proc_close($proc);
+        [$rc] = $this->media->run($this->media->sliceCommand($inputPath, $startSec, $durationSec, $outputPath));
         return $rc === 0 && is_file($outputPath) && filesize($outputPath) > 0;
     }
 
@@ -944,14 +963,17 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         $chunkSeconds = max(60, $thresholdMin * 60 - 60); // chunk slightly smaller than threshold
         $overlapSeconds = 30.0;
 
-        $tmpDir = sys_get_temp_dir() . '/audiolog_split_' . uniqid('', true);
-        if (!@mkdir($tmpDir, 0700, true)) {
+        $tmpDir = $this->tempManager->getTemporaryFolder();
+        if (!is_string($tmpDir) || !is_dir($tmpDir)) {
             throw new \RuntimeException('Falha ao criar diretório temporário para split');
         }
+        $tmpDir = rtrim($tmpDir, '/');
+        @chmod($tmpDir, 0700);
         $sourcePath = $tmpDir . '/source.bin';
-        file_put_contents($sourcePath, $audioContent);
 
         try {
+            file_put_contents($sourcePath, $audioContent);
+            @chmod($sourcePath, 0600);
             $segments = [];
             $start = 0.0;
             $idx = 0;
@@ -1066,11 +1088,10 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * the audio.
      */
     private function processGeminiTextOnly(string $text, string $prompt): string {
-        $client = $this->clientService->newClient();
         $apiKey = $this->getApiKey();
         $model = $this->getModel();
         $baseUrl = rtrim($this->getBaseUrl(), '/');
-        $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent?key={$apiKey}";
+        $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent";
 
         $body = [
             'contents' => [[
@@ -1083,17 +1104,42 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 'maxOutputTokens' => 65536,
             ],
         ];
-        $response = $client->post($apiUrl, [
+        $response = $this->providerRequest('POST', $apiUrl, [
             'json' => $body,
-            'headers' => ['Content-Type' => 'application/json'],
+            'headers' => $this->googleHeaders($apiKey, ['Content-Type' => 'application/json']),
             'timeout' => 600,
         ]);
         $result = json_decode($response->getBody(), true);
         if (isset($result['error'])) {
-            throw new \RuntimeException('Erro Gemini (text-only): ' . ($result['error']['message'] ?? 'desconhecido'));
+            throw $this->providerError('Erro Gemini (text-only)', $result['error']);
         }
         $out = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
         return $this->sanitizeResponse($out);
+    }
+
+    /**
+     * Private (0600) temp file from Nextcloud's ITempManager, which also
+     * removes it at the end of the request; callers still unlink it in
+     * `finally` so long jobs don't keep meeting audio around.
+     */
+    private function newTempFile(string $postFix = ''): string {
+        $file = $this->tempManager->getTemporaryFile($postFix);
+        if (!is_string($file) || $file === '') {
+            throw new \RuntimeException('Não foi possível criar arquivo temporário');
+        }
+        @chmod($file, 0600);
+        return $file;
+    }
+
+    /**
+     * Refuse anything that is not real media by its bytes: playlists and
+     * manifests (m3u/HLS, ffconcat, DASH...) named like media would make
+     * ffmpeg follow the URLs or file:// paths inside them.
+     */
+    private function assertMediaContent(string $content): void {
+        if ($this->media->looksLikePlaylist($content) || !$this->media->isMediaContent($content)) {
+            throw new InvalidInputException($this->l10n->t('O arquivo não é um áudio ou vídeo válido'), 415);
+        }
     }
 
     /**
@@ -1107,20 +1153,28 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * Extract audio from video file using ffmpeg
      */
     private function extractAudioFromVideo(string $videoPath): array {
-        $outputPath = sys_get_temp_dir() . '/audio_' . uniqid() . '.mp3';
+        $outputPath = $this->newTempFile('.mp3');
 
-        // Use ffmpeg to extract audio
-        $command = sprintf(
-            'ffmpeg -i %s -vn -acodec libmp3lame -q:a 2 -y %s 2>&1',
-            escapeshellarg($videoPath),
-            escapeshellarg($outputPath)
-        );
+        [$returnCode, , $stderr] = $this->media->run($this->media->extractAudioCommand($videoPath, $outputPath));
 
-        exec($command, $output, $returnCode);
-
-        if ($returnCode !== 0 || !file_exists($outputPath)) {
-            $this->logger->error("FFmpeg extraction failed: " . implode("\n", $output));
-            throw new \RuntimeException('Falha ao extrair áudio do vídeo. Verifique se ffmpeg está instalado.');
+        if ($returnCode !== 0 || !file_exists($outputPath) || filesize($outputPath) === 0) {
+            @unlink($outputPath);
+            $this->logger->error('FFmpeg extraction failed (exit ' . $returnCode . '): ' . substr($stderr, -2000));
+            // Tell the user the actual cause: a refused format is not a
+            // missing ffmpeg.
+            if ($this->media->isUnavailable($returnCode)) {
+                throw new InvalidInputException($this->l10n->t('O ffmpeg não está disponível no servidor. Peça ao administrador para instalá-lo.'), 503);
+            }
+            if ($returnCode === MediaTools::EXIT_TIMEOUT) {
+                throw new InvalidInputException($this->l10n->t('A extração do áudio excedeu o tempo limite.'), 504);
+            }
+            if ($this->media->isUnsupportedInput($stderr)) {
+                throw new InvalidInputException($this->l10n->t(
+                    'Formato de áudio ou vídeo não suportado. Formatos aceitos: %s.',
+                    [$this->media->acceptedFormatsLabel()]
+                ), 415);
+            }
+            throw new InvalidInputException($this->l10n->t('Não foi possível extrair o áudio do vídeo.'), 422);
         }
 
         return [
@@ -1150,29 +1204,32 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $this->recordJob($userId, 'process', 'failed', [
                 'sourcePath' => $filename,
                 'outputTypes' => $outputTypes,
-                'error' => 'Falha ao ler arquivo',
+                'error' => 'Falha ao ler arquivo', // l10n-ignore: internal job record
             ]);
             throw new \RuntimeException('Falha ao ler arquivo');
         }
+        $this->assertMediaContent($audioContent);
 
-        // If it's a video, extract audio first
-        if ($this->isVideoFile($mimeType)) {
-            $this->logger->info("AssistAudio: Extracting audio from video file: {$filename}");
-            $extracted = $this->extractAudioFromVideo($tmpPath);
-            $audioContent = $extracted['content'];
-            $mimeType = $extracted['mimeType'];
-            $filename = pathinfo($filename, PATHINFO_FILENAME) . '.mp3';
-            $extractedAudioPath = $extracted['path'];
-        }
+        try {
+            // If it's a video, extract audio first
+            if ($this->isVideoFile($mimeType)) {
+                $this->logger->debug('Audiolog: extracting audio from uploaded video');
+                $extracted = $this->extractAudioFromVideo($tmpPath);
+                $audioContent = $extracted['content'];
+                $mimeType = $extracted['mimeType'];
+                $filename = pathinfo($filename, PATHINFO_FILENAME) . '.mp3';
+                $extractedAudioPath = $extracted['path'];
+            }
 
-        // Transcribe/process audio — but if it's a long audio AND we're using
-        // Gemini, route through the chunked map-reduce path so the model
-        // doesn't truncate.
-        $text = $this->transcribeWithLongAudioFallback($audioContent, $filename, $mimeType, $outputTypes, $prompt);
-
-        // Clean up extracted audio file
-        if ($extractedAudioPath && file_exists($extractedAudioPath)) {
-            unlink($extractedAudioPath);
+            // Transcribe/process audio — but if it's a long audio AND we're using
+            // Gemini, route through the chunked map-reduce path so the model
+            // doesn't truncate.
+            $text = $this->transcribeWithLongAudioFallback($audioContent, $filename, $mimeType, $outputTypes, $prompt);
+        } finally {
+            // Meeting audio must not linger in the temp dir, success or not.
+            if ($extractedAudioPath) {
+                @unlink($extractedAudioPath);
+            }
         }
 
         // Save audio file to user's files (if enabled)
@@ -1233,7 +1290,12 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $file = $userFolder->get($path);
 
             if (!($file instanceof \OCP\Files\File)) {
-                throw new \RuntimeException('O caminho especificado não é um arquivo');
+                throw new InvalidInputException($this->l10n->t('O caminho especificado não é um arquivo'));
+            }
+
+            $maxMb = (int)$this->config->getAppValue($this->appName, 'max_file_size', '100');
+            if ($maxMb > 0 && $file->getSize() > $maxMb * 1024 * 1024) {
+                throw new InvalidInputException($this->l10n->t('O arquivo excede o tamanho máximo de %s MB', [(string)$maxMb]), 413);
             }
 
             $audioContent = $file->getContent();
@@ -1243,33 +1305,37 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
             // Validate it's an audio or video file
             if (!str_starts_with($mimeType, 'audio/') && !str_starts_with($mimeType, 'video/')) {
-                throw new \RuntimeException('O arquivo selecionado não é um arquivo de áudio ou vídeo');
+                throw new InvalidInputException($this->l10n->t('O arquivo selecionado não é um arquivo de áudio ou vídeo'), 415);
             }
+            // Nextcloud derives the type from the extension: check the bytes.
+            $this->assertMediaContent($audioContent);
 
-            // If it's a video, extract audio first
-            if ($this->isVideoFile($mimeType)) {
-                $this->logger->info("AssistAudio: Extracting audio from video file: {$filename}");
+            $tempVideoPath = null;
+            try {
+                // If it's a video, extract audio first
+                if ($this->isVideoFile($mimeType)) {
+                    $this->logger->debug('Audiolog: extracting audio from Nextcloud video');
 
-                // Save video to temp file for ffmpeg processing
-                $tempVideoPath = sys_get_temp_dir() . '/video_' . uniqid() . '.' . pathinfo($filename, PATHINFO_EXTENSION);
-                file_put_contents($tempVideoPath, $audioContent);
+                    // Save video to temp file for ffmpeg processing
+                    $tempVideoPath = $this->newTempFile('.' . (pathinfo($filename, PATHINFO_EXTENSION) ?: 'bin'));
+                    file_put_contents($tempVideoPath, $audioContent);
 
-                $extracted = $this->extractAudioFromVideo($tempVideoPath);
-                $audioContent = $extracted['content'];
-                $mimeType = $extracted['mimeType'];
-                $filename = pathinfo($filename, PATHINFO_FILENAME) . '.mp3';
-                $extractedAudioPath = $extracted['path'];
+                    $extracted = $this->extractAudioFromVideo($tempVideoPath);
+                    $audioContent = $extracted['content'];
+                    $mimeType = $extracted['mimeType'];
+                    $filename = pathinfo($filename, PATHINFO_FILENAME) . '.mp3';
+                    $extractedAudioPath = $extracted['path'];
+                }
 
-                // Clean up temp video
-                unlink($tempVideoPath);
-            }
-
-            // Transcribe/process audio — long-audio split is applied here too.
-            $text = $this->transcribeWithLongAudioFallback($audioContent, $filename, $mimeType, $outputTypes, $prompt);
-
-            // Clean up extracted audio file
-            if ($extractedAudioPath && file_exists($extractedAudioPath)) {
-                unlink($extractedAudioPath);
+                // Transcribe/process audio — long-audio split is applied here too.
+                $text = $this->transcribeWithLongAudioFallback($audioContent, $filename, $mimeType, $outputTypes, $prompt);
+            } finally {
+                // Meeting audio must not linger in the temp dir, success or not.
+                foreach ([$tempVideoPath, $extractedAudioPath] as $tmp) {
+                    if ($tmp) {
+                        @unlink($tmp);
+                    }
+                }
             }
 
             // Extract tasks if needed
@@ -1309,9 +1375,9 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         } catch (NotFoundException $e) {
             $this->recordJob($userId, 'process', 'failed', [
                 'sourcePath' => $path,
-                'error' => 'Arquivo não encontrado: ' . $path,
+                'error' => 'not found', // l10n-ignore: internal job record
             ]);
-            throw new \RuntimeException('Arquivo não encontrado: ' . $path);
+            throw new InvalidInputException($this->l10n->t('Arquivo não encontrado: %s', [$path]), 404);
         }
     }
 
@@ -1322,16 +1388,16 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         try {
             $savedPath = $this->saveAudioFile($userId, $content, $filename, $title);
             if (empty($savedPath)) {
-                return ["error" => "Falha ao salvar arquivo"];
+                return ['error' => $this->l10n->t('Falha ao salvar o arquivo')];
             }
             return [
                 "success" => true,
-                "message" => "Audio salvo com sucesso",
+                "message" => $this->l10n->t('Áudio salvo com sucesso'),
                 "path" => $savedPath
             ];
         } catch (\Exception $e) {
             $this->logger->error("Erro ao salvar gravacao: " . $e->getMessage());
-            return ["error" => $e->getMessage()];
+            return ['error' => $this->l10n->t('Falha ao salvar o arquivo')];
         }
     }
 
@@ -1558,74 +1624,170 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      */
     private function appendOutputToMeta(string $userId, string $audioPath, array $output): void {
         try {
-            $userFolder = $this->rootFolder->getUserFolder($userId);
-            $audioName = basename($audioPath);
-            try {
-                $audiosFolder = $userFolder->get('Audiolog');
-            } catch (NotFoundException $e) {
-                return; // No folder, nothing to update.
-            }
-            if (!($audiosFolder instanceof \OCP\Files\Folder)) {
-                return;
-            }
-            if (!$audiosFolder->nodeExists($audioName)) {
+            // Resolve the audio by its full relative path: recordings with a
+            // title live in Audiolog/<title>/, not at the Audiolog root.
+            $audioNode = $this->resolveAudiologFile($userId, $audioPath);
+            if ($audioNode === null) {
                 return; // Audio not in Audiolog — skip metadata.
             }
+            $folder = $audioNode->getParent();
+            $audioName = $audioNode->getName();
 
-            $meta = $this->readMeta($audiosFolder, $audioName) ?? [
+            $meta = $this->readMeta($folder, $audioName) ?? [
                 'title' => pathinfo($audioName, PATHINFO_FILENAME),
-                'audioPath' => $audioPath,
+                'audioPath' => trim($audioPath, '/'),
                 'createdAt' => time(),
                 'outputs' => []
             ];
 
             // Replace existing entry with same type, keep history otherwise.
+            // Saved notes/documents are kept one per path.
             $existing = $meta['outputs'] ?? [];
-            $filtered = array_values(array_filter($existing, fn($o) => ($o['type'] ?? '') !== ($output['type'] ?? '')));
+            $filtered = array_values(array_filter($existing, function ($o) use ($output) {
+                if (!empty($output['path'])) {
+                    return ($o['path'] ?? '') !== $output['path'];
+                }
+                return ($o['type'] ?? '') !== ($output['type'] ?? '');
+            }));
             $filtered[] = array_merge(['generatedAt' => time()], $output);
             $meta['outputs'] = $filtered;
 
-            $this->writeMeta($audiosFolder, $audioName, $meta);
+            $this->writeMeta($folder, $audioName, $meta);
         } catch (\Throwable $e) {
             $this->logger->warning('Audiolog: appendOutputToMeta failed: ' . $e->getMessage());
         }
     }
 
-    private function extractTasks(string $text): array {
-        $tasks = [];
-
-        // Pattern to match tasks in table format or bullet points
-        $patterns = [
-            '/\|\s*\d+\s*\|\s*([^|]+)\s*\|\s*([^|]*)\s*\|\s*([^|]*)\s*\|/m',
-            '/\|\s*([^|]+)\s*\|\s*([^|]*)\s*\|\s*([^|]*)\s*\|/m',
-            '/[-*]\s*(.+?)(?:\s*[-–]\s*Responsável:\s*([^,\n]+))?(?:\s*[-–]\s*Prazo:\s*([^\n]+))?/mi',
-        ];
-
-        foreach ($patterns as $pattern) {
-            if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
-                foreach ($matches as $match) {
-                    $task = trim($match[1] ?? '');
-                    // Skip header rows
-                    if (!empty($task) && strlen($task) > 3 &&
-                        !preg_match('/^(tarefa|task|#|---)/i', $task)) {
-                        $tasks[] = [
-                            'title' => $task,
-                            'assignee' => trim($match[2] ?? ''),
-                            'dueDate' => trim($match[3] ?? '')
-                        ];
-                    }
-                }
+    /**
+     * Resolve a file inside Audiolog/ by its relative path ("Audiolog/X/a.webm"),
+     * refusing anything outside it. Returns null when it does not exist.
+     */
+    private function resolveAudiologFile(string $userId, string $relPath): ?\OCP\Files\File {
+        $relPath = trim($relPath, '/');
+        if (!str_starts_with($relPath, 'Audiolog/')) {
+            return null;
+        }
+        foreach (explode('/', $relPath) as $seg) {
+            if ($seg === '' || $seg === '.' || $seg === '..' || str_contains($seg, '\\') || str_contains($seg, "\0")) {
+                return null;
             }
         }
+        try {
+            $node = $this->rootFolder->getUserFolder($userId)->get($relPath);
+        } catch (NotFoundException $e) {
+            return null;
+        }
+        return $node instanceof \OCP\Files\File ? $node : null;
+    }
 
+    /**
+     * Pull tasks out of the model's answer. Only two shapes count:
+     *  1. the table the prompt asks for ("| Tarefa | Responsável | Prazo |",
+     *     or its en/es translation, optionally with a leading "#" column);
+     *  2. a bullet list under a tasks heading ("## Tarefas", "Tasks:", ...),
+     *     with optional "- Responsável: X - Prazo: Y" suffixes.
+     * Other tables of the minutes (participants, agenda) are ignored.
+     *
+     * @return list<array{title:string,assignee:string,dueDate:string}>
+     */
+    private function extractTasks(string $text): array {
+        $lines = preg_split('/\R/u', $text) ?: [];
+        $tasks = $this->extractTaskTable($lines);
+        if ($tasks === []) {
+            $tasks = $this->extractTaskBullets($lines);
+        }
         return array_slice($tasks, 0, 20);
     }
 
-    public function getTaskStatus(int $taskId): array {
-        return [
-            'status' => 'completed',
-            'taskId' => $taskId
-        ];
+    /**
+     * Task headings (pt/en/es), shared by the table header cell and the
+     * bullet-section heading so both shapes accept the same names.
+     */
+    private const TASK_HEADINGS = 'tarefas?|tasks?|tareas?|a[cç][aã]o|a[cç][oõ]es|acci[oó]n|acciones'
+        . '|actions?(?: items?)?|action items?|encaminhamentos|pr[oó]ximos? pass?os?|next steps?'
+        . '|pasos siguientes|to-?dos?|pend[eê]ncias';
+    private const TASK_HEADER = '/^(' . self::TASK_HEADINGS . ')$/iu';
+
+    /** @return list<string> cells of a markdown table row, or [] if not a row */
+    private function tableCells(string $line): array {
+        $line = trim($line);
+        if (!str_starts_with($line, '|') || !str_ends_with($line, '|') || strlen($line) < 3) {
+            return [];
+        }
+        return array_map(fn ($c) => trim(str_replace('**', '', $c)), explode('|', substr($line, 1, -1)));
+    }
+
+    private function extractTaskTable(array $lines): array {
+        $tasks = [];
+        $count = count($lines);
+        for ($i = 0; $i < $count; $i++) {
+            $header = $this->tableCells($lines[$i]);
+            if (count($header) < 2) {
+                continue;
+            }
+            $offset = ($header[0] === '#' || $header[0] === 'Nº' || $header[0] === 'N°') ? 1 : 0;
+            if (!preg_match(self::TASK_HEADER, $header[$offset] ?? '')) {
+                continue;
+            }
+            for ($j = $i + 1; $j < $count; $j++) {
+                $cells = $this->tableCells($lines[$j]);
+                if ($cells === []) {
+                    break;
+                }
+                if (preg_match('/^:?-{2,}:?$/', $cells[0] ?? '')) {
+                    continue; // separator row
+                }
+                $title = $cells[$offset] ?? '';
+                if (mb_strlen($title) < 3) {
+                    continue;
+                }
+                $tasks[] = [
+                    'title' => $title,
+                    'assignee' => $cells[$offset + 1] ?? '',
+                    'dueDate' => $cells[$offset + 2] ?? '',
+                ];
+            }
+            $i = $j - 1;
+        }
+        return $tasks;
+    }
+
+    private function extractTaskBullets(array $lines): array {
+        $tasks = [];
+        $inSection = false;
+        foreach ($lines as $line) {
+            $trim = trim($line);
+            // A heading (markdown "#", bold "**X**" or "X:") opens/closes the section.
+            $heading = null;
+            if (preg_match('/^#{1,6}\s*(.+?)\s*:?\s*$/u', $trim, $m)
+                || preg_match('/^\*\*(.+?)\*\*\s*:?\s*$/u', $trim, $m)
+                || preg_match('/^([^\-*•|].{0,40}?):\s*$/u', $trim, $m)) {
+                $heading = trim(str_replace('**', '', $m[1]), " :\t");
+            }
+            if ($heading !== null) {
+                $inSection = (bool)preg_match('/^(' . self::TASK_HEADINGS . ')(?![\p{L}])/iu', $heading);
+                continue;
+            }
+            if (!$inSection || !preg_match('/^\s*[-*•]\s+(.+)$/u', $line, $m)) {
+                continue;
+            }
+            $body = trim(str_replace('**', '', $m[1]));
+            $assignee = '';
+            $due = '';
+            if (preg_match('/\s+[-–—]\s*(?:Prazo|Due|Deadline|Plazo)\s*:\s*(.+)$/iu', $body, $d)) {
+                $due = trim($d[1]);
+                $body = trim(substr($body, 0, -strlen($d[0])));
+            }
+            if (preg_match('/\s+[-–—]\s*(?:Respons[aá]vel|Responsible|Owner|Responsable)\s*:\s*(.+)$/iu', $body, $r)) {
+                $assignee = trim($r[1]);
+                $body = trim(substr($body, 0, -strlen($r[0])));
+            }
+            if (mb_strlen($body) < 3) {
+                continue;
+            }
+            $tasks[] = ['title' => $body, 'assignee' => $assignee, 'dueDate' => $due];
+        }
+        return $tasks;
     }
 
     public function getHistory(string $userId): array {
@@ -1772,7 +1934,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 'fileId' => 0,
                 'breadcrumb' => [['name' => 'Audiolog', 'path' => 'Audiolog']],
                 'items' => [],
-                'error' => $e->getMessage(),
+                'error' => $this->l10n->t('Não foi possível listar as gravações.'),
             ];
         }
     }
@@ -1786,10 +1948,10 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $parent = $this->resolveSafeAudiosFolder($userId, $parentRelPath);
             $safe = $this->sanitizeFilename($name);
             if ($safe === '') {
-                return ['error' => 'Nome de pasta inválido'];
+                return ['error' => $this->l10n->t('Nome de pasta inválido')];
             }
             if ($parent->nodeExists($safe)) {
-                return ['error' => 'Já existe uma pasta com esse nome'];
+                return ['error' => $this->l10n->t('Já existe uma pasta com esse nome')];
             }
             $parent->newFolder($safe);
             return [
@@ -1799,7 +1961,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             ];
         } catch (\Exception $e) {
             $this->logger->error('createFolder failed: ' . $e->getMessage());
-            return ['error' => $e->getMessage()];
+            return ['error' => $this->l10n->t('Não foi possível criar a pasta.')];
         }
     }
 
@@ -1814,7 +1976,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $fromRelPath = trim($fromRelPath, '/');
             $toFolderRelPath = trim($toFolderRelPath, '/');
             if (!str_starts_with($fromRelPath, 'Audiolog/') && $fromRelPath !== 'Audiolog') {
-                return ['error' => 'Origem fora de Audiolog'];
+                return ['error' => $this->l10n->t('Caminho fora de Audiolog/')];
             }
             // Validate destination is a real folder inside Audiolog.
             $destFolder = $this->resolveSafeAudiosFolder($userId, $toFolderRelPath);
@@ -1845,7 +2007,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             ];
         } catch (\Exception $e) {
             $this->logger->error('moveItem failed: ' . $e->getMessage());
-            return ['error' => $e->getMessage()];
+            return ['error' => $this->l10n->t('Não foi possível mover o item.')];
         }
     }
 
@@ -1895,72 +2057,66 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      */
     public function renameRecording(string $userId, string $audioPath, string $newTitle): array {
         if (empty($newTitle)) {
-            return ['error' => 'Título vazio'];
+            return ['error' => $this->l10n->t('Título obrigatório')];
         }
         try {
-            $userFolder = $this->rootFolder->getUserFolder($userId);
-            try {
-                $audiosFolder = $userFolder->get('Audiolog');
-            } catch (NotFoundException $e) {
-                return ['error' => 'Pasta Audiolog não encontrada'];
+            // Full relative path: the recording may live in Audiolog/<title>/.
+            $audioNode = $this->resolveAudiologFile($userId, $audioPath);
+            if ($audioNode === null) {
+                return ['error' => $this->l10n->t('Arquivo não encontrado')];
             }
-            if (!($audiosFolder instanceof \OCP\Files\Folder)) {
-                return ['error' => 'Audiolog não é uma pasta'];
-            }
+            $folder = $audioNode->getParent();
+            $oldName = $audioNode->getName();
+            $relDir = dirname(trim($audioPath, '/'));
 
-            $oldName = basename($audioPath);
-            if (!$audiosFolder->nodeExists($oldName)) {
-                return ['error' => 'Arquivo não encontrado'];
-            }
-
-            $audioNode = $audiosFolder->get($oldName);
             $ext = pathinfo($oldName, PATHINFO_EXTENSION) ?: 'mp3';
             $safeName = $this->sanitizeFilename($newTitle);
             if (empty($safeName)) {
-                return ['error' => 'Título inválido'];
+                return ['error' => $this->l10n->t('Título inválido')];
             }
 
             $newName = $safeName . '.' . $ext;
             $counter = 1;
-            while ($newName !== $oldName && $audiosFolder->nodeExists($newName)) {
+            while ($newName !== $oldName && $folder->nodeExists($newName)) {
                 $newName = $safeName . '_' . $counter . '.' . $ext;
                 $counter++;
             }
 
             // Move audio
             if ($newName !== $oldName) {
-                $audioNode->move($audiosFolder->getPath() . '/' . $newName);
+                $audioNode->move($folder->getPath() . '/' . $newName);
             }
 
             // Move/rename meta
             $oldMeta = $this->metaFileName($oldName);
             $newMeta = $this->metaFileName($newName);
             $meta = null;
-            if ($audiosFolder->nodeExists($oldMeta)) {
-                $metaNode = $audiosFolder->get($oldMeta);
+            if ($folder->nodeExists($oldMeta)) {
+                $metaNode = $folder->get($oldMeta);
                 if ($metaNode instanceof \OCP\Files\File) {
                     $meta = json_decode($metaNode->getContent(), true) ?: [];
                     if ($oldMeta !== $newMeta) {
-                        $metaNode->move($audiosFolder->getPath() . '/' . $newMeta);
+                        $metaNode->move($folder->getPath() . '/' . $newMeta);
                     }
                 }
             }
             if (!is_array($meta)) {
                 $meta = ['outputs' => []];
             }
+            $newPath = $relDir . '/' . $newName;
             $meta['title'] = $newTitle;
-            $meta['audioPath'] = 'Audiolog/' . $newName;
-            $this->writeMeta($audiosFolder, $newName, $meta);
+            $meta['audioPath'] = $newPath;
+            $this->writeMeta($folder, $newName, $meta);
 
             return [
                 'success' => true,
-                'newPath' => 'Audiolog/' . $newName,
+                'newPath' => $newPath,
                 'newName' => $newName
             ];
 
         } catch (\Exception $e) {
             $this->logger->error('Erro ao renomear gravação: ' . $e->getMessage());
-            return ['error' => $e->getMessage()];
+            return ['error' => $this->l10n->t('Não foi possível renomear a gravação.')];
         }
     }
 
@@ -1981,16 +2137,16 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         try {
             $relPath = trim($relPath, '/');
             if ($relPath === '' || (!str_starts_with($relPath, 'Audiolog/') && $relPath !== 'Audiolog')) {
-                return ['error' => 'Caminho fora de Audiolog/'];
+                return ['error' => $this->l10n->t('Caminho fora de Audiolog/')];
             }
             foreach (explode('/', $relPath) as $seg) {
                 if ($seg === '..' || $seg === '.') {
-                    return ['error' => 'Caminho inválido'];
+                    return ['error' => $this->l10n->t('Caminho inválido')];
                 }
             }
             // Refuse deleting the root folder itself.
             if ($relPath === 'Audiolog') {
-                return ['error' => 'Não é possível excluir a pasta raiz Audiolog'];
+                return ['error' => $this->l10n->t('Não é possível excluir a pasta raiz Audiolog')];
             }
 
             $userFolder = $this->rootFolder->getUserFolder($userId);
@@ -2032,10 +2188,10 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 'deletedOutputs' => $deletedOutputs
             ];
         } catch (NotFoundException $e) {
-            return ['error' => 'Item não encontrado'];
+            return ['error' => $this->l10n->t('Item não encontrado')];
         } catch (\Exception $e) {
             $this->logger->error('Erro ao excluir: ' . $e->getMessage());
-            return ['error' => $e->getMessage()];
+            return ['error' => $this->l10n->t('Não foi possível excluir o item.')];
         }
     }
 
@@ -2108,7 +2264,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 'success' => true,
                 'path' => $savedPath,
                 'fileId' => $file->getId(),
-                'message' => 'Nota salva com sucesso'
+                'message' => $this->l10n->t('Nota salva com sucesso')
             ];
 
         } catch (\Exception $e) {
@@ -2161,7 +2317,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 'success' => true,
                 'path' => $savedPath,
                 'fileId' => $file->getId(),
-                'message' => 'Documento salvo com sucesso'
+                'message' => $this->l10n->t('Documento salvo com sucesso')
             ];
 
         } catch (\Exception $e) {
@@ -2177,8 +2333,15 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
     private function generateDocx(string $title, string $content): string {
         // Create temporary file for the ZIP
-        $tempFile = tempnam(sys_get_temp_dir(), 'docx_');
+        $tempFile = $this->newTempFile('.docx');
+        try {
+            return $this->buildDocx($tempFile, $title, $content);
+        } finally {
+            @unlink($tempFile);
+        }
+    }
 
+    private function buildDocx(string $tempFile, string $title, string $content): string {
         $zip = new \ZipArchive();
         if ($zip->open($tempFile, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
             throw new \RuntimeException('Não foi possível criar arquivo DOCX');
@@ -2237,11 +2400,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
         $zip->close();
 
-        // Read the content and delete temp file
-        $docxContent = file_get_contents($tempFile);
-        unlink($tempFile);
-
-        return $docxContent;
+        return (string)file_get_contents($tempFile);
     }
 
     private function convertContentToDocxXml(string $title, string $content): string {
@@ -2302,181 +2461,11 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         return htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
     }
 
-    public function getDeckBoards(string $userId): array {
-        try {
-            $this->logger->info("getDeckBoards: Starting for user {$userId}");
-
-            // Check if Deck app is available
-            if (!$this->appManager->isInstalled('deck')) {
-                $this->logger->warning("getDeckBoards: Deck not enabled for user {$userId}");
-                return ['boards' => [], 'error' => 'Deck não está instalado ou habilitado'];
-            }
-
-            $this->logger->info("getDeckBoards: Deck is enabled, querying database");
-            $db = $this->db;
-            $boards = [];
-
-            // First get boards where user is owner
-            $qb = $db->getQueryBuilder();
-            $qb->select('id', 'title')
-                ->from('deck_boards')
-                ->where($qb->expr()->eq('owner', $qb->createNamedParameter($userId)))
-                ->andWhere($qb->expr()->eq('deleted_at', $qb->createNamedParameter(0)))
-                ->orderBy('title', 'ASC');
-
-            $this->logger->info("getDeckBoards: Executing owner query");
-            $result = $qb->executeQuery();
-
-            while ($row = $result->fetch()) {
-                $this->logger->info("getDeckBoards: Found owner board: {$row['title']} (id: {$row['id']})");
-
-                // Get stacks for this board
-                $stackQb = $db->getQueryBuilder();
-                $stackQb->select('id', 'title')
-                        ->from('deck_stacks')
-                        ->where($stackQb->expr()->eq('board_id', $stackQb->createNamedParameter($row['id'])))
-                        ->andWhere($stackQb->expr()->eq('deleted_at', $stackQb->createNamedParameter(0)))
-                        ->orderBy('order', 'ASC');
-
-                $stackResult = $stackQb->executeQuery();
-                $stacks = [];
-                while ($stackRow = $stackResult->fetch()) {
-                    $stacks[] = [
-                        'id' => (int)$stackRow['id'],
-                        'title' => $stackRow['title']
-                    ];
-                }
-                $stackResult->closeCursor();
-
-                $boards[] = [
-                    'id' => (int)$row['id'],
-                    'title' => $row['title'],
-                    'stacks' => $stacks
-                ];
-            }
-            $result->closeCursor();
-
-            // Also get boards shared with user via ACL
-            $existingIds = array_column($boards, 'id');
-
-            $qb2 = $db->getQueryBuilder();
-            $qb2->select('b.id', 'b.title')
-               ->from('deck_boards', 'b')
-               ->innerJoin('b', 'deck_board_acl', 'acl', 'b.id = acl.board_id')
-               ->where($qb2->expr()->eq('acl.participant', $qb2->createNamedParameter($userId)))
-               ->andWhere($qb2->expr()->eq('acl.type', $qb2->createNamedParameter(0)))
-               ->andWhere($qb2->expr()->eq('b.deleted_at', $qb2->createNamedParameter(0)))
-               ->orderBy('b.title', 'ASC');
-
-            $this->logger->info("getDeckBoards: Executing ACL query");
-            $result2 = $qb2->executeQuery();
-
-            while ($row = $result2->fetch()) {
-                if (!in_array((int)$row['id'], $existingIds)) {
-                    $this->logger->info("getDeckBoards: Found shared board: {$row['title']} (id: {$row['id']})");
-
-                    // Get stacks
-                    $stackQb = $db->getQueryBuilder();
-                    $stackQb->select('id', 'title')
-                            ->from('deck_stacks')
-                            ->where($stackQb->expr()->eq('board_id', $stackQb->createNamedParameter($row['id'])))
-                            ->andWhere($stackQb->expr()->eq('deleted_at', $stackQb->createNamedParameter(0)))
-                            ->orderBy('order', 'ASC');
-
-                    $stackResult = $stackQb->executeQuery();
-                    $stacks = [];
-                    while ($stackRow = $stackResult->fetch()) {
-                        $stacks[] = [
-                            'id' => (int)$stackRow['id'],
-                            'title' => $stackRow['title']
-                        ];
-                    }
-                    $stackResult->closeCursor();
-
-                    $boards[] = [
-                        'id' => (int)$row['id'],
-                        'title' => $row['title'],
-                        'stacks' => $stacks
-                    ];
-                }
-            }
-            $result2->closeCursor();
-
-            $this->logger->info("getDeckBoards: Total boards found: " . count($boards));
-            return ['boards' => $boards];
-
-        } catch (\Exception $e) {
-            $this->logger->error("getDeckBoards: Error - " . $e->getMessage() . " | Trace: " . $e->getTraceAsString());
-            return ['boards' => [], 'error' => $e->getMessage()];
-        }
-    }
-
-    public function createDeckCards(string $userId, array $tasks, ?int $boardId, ?int $stackId): array {
-        try {
-            // If no boardId provided, save to file instead
-            if (!$boardId || !$stackId) {
-                return $this->saveTasksToFile($userId, $tasks);
-            }
-
-            // Create cards in Deck
-            $db = $this->db;
-            $createdCards = 0;
-
-            foreach ($tasks as $task) {
-                $title = $task['title'] ?? '';
-                if (empty($title)) continue;
-
-                $description = '';
-                if (!empty($task['assignee'])) {
-                    $description .= "Responsável: " . $task['assignee'] . "\n";
-                }
-                if (!empty($task['dueDate'])) {
-                    $description .= "Prazo: " . $task['dueDate'];
-                }
-
-                // Get max order for this stack
-                $qb = $db->getQueryBuilder();
-                $qb->select($qb->func()->max('order'))
-                   ->from('deck_cards')
-                   ->where($qb->expr()->eq('stack_id', $qb->createNamedParameter($stackId)));
-                $result = $qb->executeQuery();
-                $maxOrder = (int)$result->fetchOne() + 1;
-                $result->closeCursor();
-
-                // Insert card
-                $qb = $db->getQueryBuilder();
-                $qb->insert('deck_cards')
-                   ->values([
-                       'title' => $qb->createNamedParameter($title),
-                       'description' => $qb->createNamedParameter($description),
-                       'stack_id' => $qb->createNamedParameter($stackId),
-                       'type' => $qb->createNamedParameter('plain'),
-                       'last_modified' => $qb->createNamedParameter(time()),
-                       'created_at' => $qb->createNamedParameter(time()),
-                       'owner' => $qb->createNamedParameter($userId),
-                       'order' => $qb->createNamedParameter($maxOrder),
-                       'archived' => $qb->createNamedParameter(0),
-                       'deleted_at' => $qb->createNamedParameter(0),
-                       'done' => $qb->createNamedParameter(null),
-                   ]);
-                $qb->executeStatement();
-                $createdCards++;
-            }
-
-            return [
-                'success' => true,
-                'count' => $createdCards,
-                'message' => $createdCards . ' tarefas criadas no Deck'
-            ];
-
-        } catch (\Exception $e) {
-            $this->logger->error("Erro ao criar cards no Deck: " . $e->getMessage());
-            // Fallback to file
-            return $this->saveTasksToFile($userId, $tasks);
-        }
-    }
-
-    private function saveTasksToFile(string $userId, array $tasks): array {
+    /**
+     * Export tasks to a Markdown table under Audiolog/ (used when the user
+     * picks no Deck board).
+     */
+    public function saveTasksToFile(string $userId, array $tasks): array {
         $userFolder = $this->rootFolder->getUserFolder($userId);
 
         try {
@@ -2486,17 +2475,18 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         }
 
         $date = date('Y-m-d_H-i');
-        $filename = "Tarefas_Reuniao_{$date}.md";
+        $filename = $this->sanitizeFilename($this->l10n->t('Tarefas da reunião')) . "_{$date}.md";
+        $undefined = $this->l10n->t('A definir');
 
-        $content = "# Tarefas da Reunião - " . date('d/m/Y H:i') . "\n\n";
-        $content .= "| # | Tarefa | Responsável | Prazo |\n";
+        $content = '# ' . $this->l10n->t('Tarefas da reunião') . ' - ' . date('Y-m-d H:i') . "\n\n";
+        $content .= '| # | ' . $this->l10n->t('Tarefa') . ' | ' . $this->l10n->t('Responsável') . ' | ' . $this->l10n->t('Prazo') . " |\n";
         $content .= "|---|--------|-------------|-------|\n";
 
         foreach ($tasks as $i => $task) {
             $num = $i + 1;
             $title = $task['title'] ?? '';
-            $assignee = $task['assignee'] ?? 'A definir';
-            $dueDate = $task['dueDate'] ?? 'A definir';
+            $assignee = ($task['assignee'] ?? '') !== '' ? $task['assignee'] : $undefined;
+            $dueDate = ($task['dueDate'] ?? '') !== '' ? $task['dueDate'] : $undefined;
             $content .= "| {$num} | {$title} | {$assignee} | {$dueDate} |\n";
         }
 
@@ -2507,7 +2497,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             'success' => true,
             'path' => "Audiolog/{$filename}",
             'count' => count($tasks),
-            'message' => count($tasks) . ' tarefas exportadas para arquivo'
+            'message' => $this->l10n->t('%s tarefa(s) exportada(s) para arquivo', [(string)count($tasks)])
         ];
     }
 }

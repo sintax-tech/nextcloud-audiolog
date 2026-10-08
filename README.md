@@ -24,6 +24,7 @@ The app deliberately keeps providers isolated: pick OpenAI and the app won't eve
 
 ## Features
 
+- **Audio and video files** accepted by content, not only by name: MP3, M4A (iPhone), OPUS/OGG (WhatsApp), WAV, FLAC, AAC, WebM, MP4 and more; video is converted to audio with `ffmpeg`
 - **Recording** with pause / resume / real-time size & duration indicator
 - **Auto-recovery** if the tab closes or the network drops mid-recording (IndexedDB-backed)
 - **Live transcription** with auto-restart on silence
@@ -38,8 +39,11 @@ The app deliberately keeps providers isolated: pick OpenAI and the app won't eve
 
 - API keys encrypted at rest with `OCP\Security\ICrypto` (`enc:v1:` prefix)
 - Per-group access control (`Allowed Groups` setting) — empty list means everyone, otherwise restricted
-- **Server-side STT proxy** for Google Cloud Speech-to-Text: the API key NEVER leaves the server, so any allowed-group user can use live transcription without leaking credentials
-- CSP locked to the active provider only — picking OpenAI removes Google domains from the allowed origins
+- **Server-side STT proxy** for Google Cloud Speech-to-Text: the API key NEVER leaves the server, so any allowed-group user can use live transcription without leaking credentials; Nextcloud's rate limiter caps it at 30 requests per minute per user
+- API keys travel in request headers (`x-goog-api-key`, `Authorization`), never in URLs, and provider error messages are masked before they reach the log, the job status or the browser
+- **Deck export** goes through Deck's own services: a card is only created on a board the user can edit
+- No provider origin in the page CSP: the browser only talks to Audiolog's own endpoints
+- Uploads are checked against the admin's maximum size and must be audio or video by content; `ffmpeg` only reads local files with media demuxers (`-protocol_whitelist file,pipe`, `-format_whitelist`), runs with a time limit, and playlists or manifests are refused
 - Path-traversal guard on every endpoint that accepts a user path
 - Web Speech API runs in the browser only, no key ever leaves the server
 - Generic error responses to clients; full stack traces stay in the server logs
@@ -50,6 +54,7 @@ The app deliberately keeps providers isolated: pick OpenAI and the app won't eve
 - **PHP 8.1+** with `curl`, `json`, `fileinfo`, `mbstring`, `openssl`
 - **`ffmpeg`** and **`ffprobe`** on the server PATH (used for audio length probing and video → audio extraction)
 - A valid API key for at least one provider, **or** a working local Ollama
+- **Local Ollama** (on `localhost` or the internal network): Nextcloud blocks requests to local and private addresses by default, and Audiolog uses Nextcloud's HTTP client. Add `'allow_local_remote_servers' => true,` to `config/config.php`; otherwise "Test connection" and processing report that the address was blocked.
 
 ## Installation
 
@@ -93,8 +98,12 @@ js/audiolog-admin.js   ← admin form, provider switching
 js/audiolog-speaker-naming.js ← speaker name editing UI
 js/audiolog-sw.js      ← service worker (PWA)
 js/pcm-extractor-worklet.js ← AudioWorklet that extracts PCM for live STT
+js/audiolog-text-utils.js ← pure text helpers (unit-tested with Jest)
 lib/Controller/        ← Page, Api, Settings controllers
 lib/Service/AudioService.php       ← provider-specific audio processing
+lib/Service/DeckIntegration.php    ← Deck export through Deck's own services
+lib/Service/MediaTools.php         ← ffmpeg/ffprobe commands (argv, local protocols only)
+lib/Service/SecretRedactor.php     ← masks API keys in error messages
 lib/Service/PermissionService.php  ← group ACL
 lib/Service/CryptoHelper.php       ← API-key encryption wrapper
 lib/BackgroundJob/ProcessAudioJob.php  ← async pipeline
@@ -105,10 +114,14 @@ lib/Migration/         ← database schema
 ## Development
 
 ```bash
-make build        # produce build/appstore/audiolog-X.Y.Z.tar.gz
-make sign         # sign the tarball with your app store certificate
+composer install  # dev-only: PHPUnit + nextcloud/ocp into vendor/ (git-ignored, never shipped)
+npm install       # dev-only: Jest into node_modules/
+make test         # PHPUnit (php -d memory_limit=1G) + Jest, no Nextcloud checkout needed
 make lint         # php -l on every PHP file
-make test         # PHPUnit + Jest
+tools/l10n.py check   # every UI string present in en, pt_BR and es
+tools/l10n.py sync    # regenerate l10n/*.js from l10n/*.json
+make build        # build/appstore/audiolog-X.Y.Z.tar.gz from the committed HEAD (git archive), then check it
+make sign         # sign the tarball with your app store certificate
 make clean        # wipe build/
 ```
 
@@ -118,9 +131,14 @@ Releases are published as a signed tarball attached to a GitHub Release (`vX.Y.Z
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE).
 
-## Author
+## About Sintax
 
-[Jhonatan Jaworski](mailto:jhonatan@sintax.tech)
+Built and maintained by [Sintax](https://sintax.tech).
+
+- Website: https://sintax.tech
+- GitHub: https://github.com/sintax-tech
+- Contact: contato@sintax.tech
+- Other Nextcloud apps by Sintax: [MCP for Nextcloud](https://apps.nextcloud.com/apps/mcp) · [Audiolog](https://apps.nextcloud.com/apps/audiolog)
 
 ---
 
@@ -142,6 +160,7 @@ Os provedores são isolados: se você escolher OpenAI, o app **não chama Google
 
 ### O que está incluído
 
+- **Arquivos de áudio e vídeo** aceitos pelo conteúdo, não só pelo nome: MP3, M4A (iPhone), OPUS/OGG (WhatsApp), WAV, FLAC, AAC, WebM, MP4 e outros; vídeo é convertido em áudio com o `ffmpeg`
 - **Gravação** com pausa, retomada e indicador real de tamanho/duração
 - **Recuperação automática** se a aba fechar ou a internet cair no meio da gravação (persistência via IndexedDB)
 - **Transcrição em tempo real** com auto-reconexão em silêncio
@@ -156,8 +175,11 @@ Os provedores são isolados: se você escolher OpenAI, o app **não chama Google
 
 - **Chaves de API criptografadas em repouso** com `OCP\Security\ICrypto`
 - **Controle por grupo** (configuração "Grupos Permitidos") — lista vazia libera todos, lista preenchida restringe
-- **Proxy STT server-side**: a chave do Google Cloud Speech-to-Text **nunca vai pro navegador** — qualquer usuário do grupo permitido pode usar transcrição ao vivo sem risco de vazar credenciais
-- **CSP dinâmico** baseado no provedor ativo: se o admin escolher OpenAI, domínios da Google nem são whitelistados
+- **Proxy STT server-side**: a chave do Google Cloud Speech-to-Text **nunca vai pro navegador** — qualquer usuário do grupo permitido pode usar transcrição ao vivo sem risco de vazar credenciais; o limitador do Nextcloud permite até 30 requisições por minuto por usuário
+- **Chaves nos headers** (`x-goog-api-key`, `Authorization`), nunca na URL, e mensagens de erro dos provedores mascaradas antes de ir para o log, o status do job ou o navegador
+- **Exportação para o Deck** pelos serviços do próprio Deck: o cartão só é criado em quadro que o usuário pode editar
+- **CSP sem provedores**: o navegador só fala com os endpoints do próprio Audiolog
+- **Uploads** conferidos contra o tamanho máximo do admin e pelo conteúdo (áudio ou vídeo); o `ffmpeg` só lê arquivos locais com demuxers de mídia (`-protocol_whitelist file,pipe`, `-format_whitelist`), roda com limite de tempo, e playlists ou manifestos são recusados
 - **Proteção contra path traversal** em todos os endpoints que aceitam caminhos do usuário
 - **Web Speech API** roda 100% no navegador, sem chave envolvida
 - **Mensagens de erro genéricas** ao cliente; stack traces ficam só nos logs do servidor
@@ -168,6 +190,7 @@ Os provedores são isolados: se você escolher OpenAI, o app **não chama Google
 - **PHP 8.1+** com `curl`, `json`, `fileinfo`, `mbstring`, `openssl`
 - **`ffmpeg`** e **`ffprobe`** no PATH do servidor
 - Chave de API de pelo menos um provedor **ou** um Ollama local funcionando
+- **Ollama local** (em `localhost` ou na rede interna): o Nextcloud bloqueia por padrão requisições a endereços locais e privados, e o Audiolog usa o cliente HTTP do Nextcloud. Adicione `'allow_local_remote_servers' => true,` ao `config/config.php`; sem isso, o "Testar conexão" e o processamento avisam que o endereço foi bloqueado.
 
 ### Instalação
 
@@ -191,10 +214,14 @@ O botão de **healthcheck** valida ffmpeg, ffprobe, extensões PHP, espaço em d
 ### Desenvolvimento
 
 ```bash
-make build        # gera build/appstore/audiolog-X.Y.Z.tar.gz
-make sign         # assina o tarball com o certificado da loja
+composer install  # só desenvolvimento: PHPUnit + nextcloud/ocp em vendor/ (fora do git e do pacote)
+npm install       # só desenvolvimento: Jest em node_modules/
+make test         # PHPUnit (php -d memory_limit=1G) + Jest, sem precisar de checkout do Nextcloud
 make lint         # php -l em todos os arquivos PHP
-make test         # PHPUnit + Jest
+tools/l10n.py check   # toda string da interface em en, pt_BR e es
+tools/l10n.py sync    # regera l10n/*.js a partir de l10n/*.json
+make build        # gera build/appstore/audiolog-X.Y.Z.tar.gz do HEAD commitado (git archive) e confere o pacote
+make sign         # assina o tarball com o certificado da loja
 make clean        # apaga build/
 ```
 
@@ -203,3 +230,12 @@ As releases são publicadas como um tarball assinado anexado a uma GitHub Releas
 ### Licença
 
 AGPL-3.0-or-later. Veja [LICENSE](LICENSE).
+
+## Sobre a Sintax
+
+Desenvolvido e mantido pela [Sintax](https://sintax.tech).
+
+- Site: https://sintax.tech
+- GitHub: https://github.com/sintax-tech
+- Contato: contato@sintax.tech
+- Outros apps da Sintax para Nextcloud: [MCP for Nextcloud](https://apps.nextcloud.com/apps/mcp) · [Audiolog](https://apps.nextcloud.com/apps/audiolog)

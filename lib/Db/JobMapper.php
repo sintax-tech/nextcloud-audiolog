@@ -51,16 +51,4 @@ class JobMapper extends QBMapper {
             ->setMaxResults($limit);
         return $this->findEntities($qb);
     }
-
-    /**
-     * Pending/running jobs older than $cutoff seconds — used to mark zombies as failed.
-     */
-    public function findStaleRunning(int $cutoffTimestamp): array {
-        $qb = $this->db->getQueryBuilder();
-        $qb->select('*')
-            ->from($this->getTableName())
-            ->where($qb->expr()->in('status', $qb->createNamedParameter(['pending', 'running'], IQueryBuilder::PARAM_STR_ARRAY)))
-            ->andWhere($qb->expr()->lte('created_at', $qb->createNamedParameter($cutoffTimestamp, IQueryBuilder::PARAM_INT)));
-        return $this->findEntities($qb);
-    }
 }

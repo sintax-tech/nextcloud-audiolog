@@ -4,9 +4,12 @@ declare(strict_types=1);
 namespace OCA\Audiolog\BackgroundJob;
 
 use OCA\Audiolog\Db\JobMapper;
+use OCA\Audiolog\Exception\InvalidInputException;
 use OCA\Audiolog\Service\AudioService;
+use OCA\Audiolog\Service\SecretRedactor;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
+use OCP\IL10N;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -34,7 +37,9 @@ class ProcessAudioJob extends QueuedJob {
         ITimeFactory $time,
         private AudioService $audioService,
         private JobMapper $jobMapper,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private SecretRedactor $redactor,
+        private IL10N $l10n
     ) {
         parent::__construct($time);
     }
@@ -73,12 +78,16 @@ class ProcessAudioJob extends QueuedJob {
                 $filename = (string)($argument['filename'] ?? 'upload.bin');
                 $mimeType = (string)($argument['mimeType'] ?? 'application/octet-stream');
                 if (!is_file($tmpPath)) {
-                    throw new \RuntimeException('Arquivo temporário não encontrado: ' . $tmpPath);
+                    throw new \RuntimeException('Arquivo temporário não encontrado');
                 }
-                $result = $this->audioService->processAudio(
-                    $tmpPath, $filename, $mimeType, $prompt, $outputTypes, $userId, $title
-                );
-                @unlink($tmpPath);
+                try {
+                    $result = $this->audioService->processAudio(
+                        $tmpPath, $filename, $mimeType, $prompt, $outputTypes, $userId, $title
+                    );
+                } finally {
+                    // The upload copy holds meeting audio: drop it, success or not.
+                    @unlink($tmpPath);
+                }
             }
 
             // The audioService recorded its own job entry; keep this top-level
@@ -88,9 +97,16 @@ class ProcessAudioJob extends QueuedJob {
             $job->setFinishedAt($this->time->getTime());
             $this->jobMapper->update($job);
         } catch (\Throwable $e) {
-            $this->logger->error('Audiolog ProcessAudioJob failed: ' . $e->getMessage());
+            // job.error is returned to the user by /api/status: only our own
+            // translated input errors go there as is; anything else (provider
+            // details, internal paths) stays in the log, redacted.
+            $message = $this->redactor->redact($e->getMessage());
+            $this->logger->error('Audiolog ProcessAudioJob failed: ' . $message);
+            $userMessage = $e instanceof InvalidInputException
+                ? $message
+                : $this->l10n->t('Falha ao processar o áudio. Verifique os logs do servidor para detalhes.');
             $job->setStatus('failed');
-            $job->setError(mb_substr($e->getMessage(), 0, 4000));
+            $job->setError(mb_substr($userMessage, 0, 4000));
             $job->setFinishedAt($this->time->getTime());
             $this->jobMapper->update($job);
         }

@@ -4,10 +4,15 @@ declare(strict_types=1);
 namespace OCA\Audiolog\Controller;
 
 use OCA\Audiolog\Service\CryptoHelper;
+use OCA\Audiolog\Service\SecretRedactor;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\AuthorizedAdminSetting;
 use OCP\AppFramework\Http\JSONResponse;
+use OCP\Http\Client\IClientService;
+use OCP\Http\Client\LocalServerException;
 use OCP\IConfig;
+use OCP\IL10N;
+use OCP\ITempManager;
 use OCP\IRequest;
 use OCA\Audiolog\Settings\AdminSettings;
 
@@ -17,9 +22,21 @@ class SettingsController extends Controller {
         string $appName,
         IRequest $request,
         private IConfig $config,
-        private CryptoHelper $crypto
+        private CryptoHelper $crypto,
+        private IClientService $clientService,
+        private SecretRedactor $redactor,
+        private ITempManager $tempManager,
+        private IL10N $l10n
     ) {
         parent::__construct($appName, $request);
+    }
+
+    /** Shown when Nextcloud refuses a local/private address (Ollama on localhost/LAN). */
+    private function localBlockedHint(): string {
+        return $this->l10n->t(
+            'O Nextcloud bloqueou o acesso a um endereço local ou da rede interna. Para usar um Ollama local, defina %s no config.php.',
+            ["'allow_local_remote_servers' => true"]
+        );
     }
 
     #[AuthorizedAdminSetting(settings: AdminSettings::class)]
@@ -38,11 +55,9 @@ class SettingsController extends Controller {
         string $long_audio_split_threshold = '25',
         string $enable_realtime_stt = 'false',
         string $realtime_stt_provider = 'web-speech',
-        string $realtime_stt_model = 'gemini-2.5-flash-native-audio-preview-12-2025',
         string $max_jobs_per_user_per_day = '50',
         string $use_google_stt_for_transcription = 'false',
         string $google_stt_api_key = '',
-        string $realtime_stt_admin_only = 'true',
         string $analysis_model = ''
     ): JSONResponse {
         try {
@@ -61,12 +76,15 @@ class SettingsController extends Controller {
             $this->config->setAppValue($this->appName, 'long_audio_split_threshold', $long_audio_split_threshold);
             $this->config->setAppValue($this->appName, 'enable_realtime_stt', $enable_realtime_stt);
             $this->config->setAppValue($this->appName, 'realtime_stt_provider', $realtime_stt_provider);
-            $this->config->setAppValue($this->appName, 'realtime_stt_model', $realtime_stt_model);
+            // Gemini Live model, unused since Gemini Live was dropped.
+            $this->config->deleteAppValue($this->appName, 'realtime_stt_model');
             $this->config->setAppValue($this->appName, 'max_jobs_per_user_per_day', $max_jobs_per_user_per_day);
             $this->config->setAppValue($this->appName, 'use_google_stt_for_transcription', $use_google_stt_for_transcription);
             // Google STT key is encrypted at rest like the Gemini key.
             $this->config->setAppValue($this->appName, 'google_stt_api_key', $this->crypto->encrypt($google_stt_api_key));
-            $this->config->setAppValue($this->appName, 'realtime_stt_admin_only', $realtime_stt_admin_only);
+            // Never read anywhere: dropped in 1.0.5 (the store text promised an
+            // admins-only switch that did not exist).
+            $this->config->deleteAppValue($this->appName, 'realtime_stt_admin_only');
             $this->config->setAppValue($this->appName, 'analysis_model', $analysis_model);
 
             $groupsJson = json_encode($allowed_groups ?? []);
@@ -74,7 +92,7 @@ class SettingsController extends Controller {
 
             return new JSONResponse(['status' => 'success']);
         } catch (\Exception $e) {
-            return new JSONResponse(['status' => 'error', 'message' => $e->getMessage()], 500);
+            return new JSONResponse(['status' => 'error', 'message' => $this->l10n->t('Não foi possível salvar as configurações.')], 500);
         }
     }
 
@@ -95,11 +113,9 @@ class SettingsController extends Controller {
             'long_audio_split_threshold' => $this->config->getAppValue($this->appName, 'long_audio_split_threshold', '25'),
             'enable_realtime_stt' => $this->config->getAppValue($this->appName, 'enable_realtime_stt', 'false'),
             'realtime_stt_provider' => $this->config->getAppValue($this->appName, 'realtime_stt_provider', 'web-speech'),
-            'realtime_stt_model' => $this->config->getAppValue($this->appName, 'realtime_stt_model', 'gemini-2.5-flash-native-audio-preview-12-2025'),
             'max_jobs_per_user_per_day' => $this->config->getAppValue($this->appName, 'max_jobs_per_user_per_day', '50'),
             'use_google_stt_for_transcription' => $this->config->getAppValue($this->appName, 'use_google_stt_for_transcription', 'false'),
             'google_stt_api_key' => $this->crypto->decrypt($this->config->getAppValue($this->appName, 'google_stt_api_key', '')),
-            'realtime_stt_admin_only' => $this->config->getAppValue($this->appName, 'realtime_stt_admin_only', 'true'),
             'analysis_model' => $this->config->getAppValue($this->appName, 'analysis_model', ''),
             'allowed_groups' => json_decode($allowedGroupsJson, true) ?: [],
         ]);
@@ -120,9 +136,11 @@ class SettingsController extends Controller {
         $apiKeyEnc = $this->config->getAppValue($this->appName, 'api_key', '');
         $apiKey = $this->crypto->decrypt($apiKeyEnc);
         $checks[] = [
-            'name' => 'API key configurada',
+            'name' => $this->l10n->t('Chave de API configurada'),
             'ok' => !empty($apiKey),
-            'detail' => empty($apiKey) ? 'Configure a chave em "Chave de API"' : 'OK (' . strlen($apiKey) . ' chars)'
+            'detail' => empty($apiKey)
+                ? $this->l10n->t('Configure a chave em "Chave de API"')
+                : $this->l10n->t('OK (%s caracteres)', [(string)strlen($apiKey)])
         ];
 
         // --- Gemini reachable? ---
@@ -131,22 +149,23 @@ class SettingsController extends Controller {
             $geminiOk = false;
             $geminiDetail = '';
             try {
-                $ch = curl_init($aiUrl);
-                curl_setopt($ch, CURLOPT_NOBODY, true);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 6);
-                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 4);
-                curl_exec($ch);
-                $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                $err = curl_error($ch);
-                curl_close($ch);
+                // Same HTTP stack as the real processing (proxy, local-address
+                // protection), so a green check means processing can connect.
+                $resp = $this->clientService->newClient()->head($aiUrl, [
+                    'timeout' => 6,
+                    'connect_timeout' => 4,
+                    'http_errors' => false,
+                ]);
+                $code = $resp->getStatusCode();
                 $geminiOk = $code > 0 && $code < 500;
-                $geminiDetail = $geminiOk ? "HTTP {$code}" : ($err ?: "HTTP {$code}");
+                $geminiDetail = "HTTP {$code}";
+            } catch (LocalServerException $e) {
+                $geminiDetail = $this->localBlockedHint();
             } catch (\Throwable $e) {
-                $geminiDetail = $e->getMessage();
+                $geminiDetail = $this->redactor->redact($e->getMessage());
             }
             $checks[] = [
-                'name' => 'Conectividade ' . parse_url($aiUrl, PHP_URL_HOST),
+                'name' => $this->l10n->t('Conectividade com %s', [(string)parse_url($aiUrl, PHP_URL_HOST)]),
                 'ok' => $geminiOk,
                 'detail' => $geminiDetail
             ];
@@ -165,27 +184,28 @@ class SettingsController extends Controller {
         foreach ($requiredExts as $ext) {
             $loaded = extension_loaded($ext);
             $checks[] = [
-                'name' => 'Extensão PHP: ' . $ext,
+                'name' => $this->l10n->t('Extensão PHP: %s', [$ext]),
                 'ok' => $loaded,
-                'detail' => $loaded ? 'carregada' : 'não encontrada — instale php-' . $ext,
+                'detail' => $loaded ? $this->l10n->t('carregada') : $this->l10n->t('não encontrada — instale php-%s', [$ext]),
             ];
         }
 
         // --- disk space ---
-        $tmpFree = @disk_free_space(sys_get_temp_dir());
+        $tmpDir = $this->tempManager->getTempBaseDir();
+        $tmpFree = @disk_free_space($tmpDir);
         $checks[] = [
-            'name' => 'Espaço em ' . sys_get_temp_dir(),
+            'name' => $this->l10n->t('Espaço em %s', [$tmpDir]),
             'ok' => $tmpFree !== false && $tmpFree > 100 * 1024 * 1024,
-            'detail' => $tmpFree !== false ? $this->humanBytes($tmpFree) . ' livres' : 'não foi possível ler'
+            'detail' => $tmpFree !== false ? $this->l10n->t('%s livres', [$this->humanBytes($tmpFree)]) : $this->l10n->t('não foi possível ler')
         ];
 
         $dataDir = $this->config->getSystemValue('datadirectory', '');
         if ($dataDir) {
             $dataFree = @disk_free_space($dataDir);
             $checks[] = [
-                'name' => 'Espaço em data dir',
+                'name' => $this->l10n->t('Espaço no diretório de dados'),
                 'ok' => $dataFree !== false && $dataFree > 500 * 1024 * 1024,
-                'detail' => $dataFree !== false ? $this->humanBytes($dataFree) . ' livres' : 'não foi possível ler'
+                'detail' => $dataFree !== false ? $this->l10n->t('%s livres', [$this->humanBytes($dataFree)]) : $this->l10n->t('não foi possível ler')
             ];
         }
 
@@ -216,7 +236,7 @@ class SettingsController extends Controller {
             }
         }
         if (!$found) {
-            return ['name' => $bin, 'ok' => false, 'detail' => 'não encontrado no PATH'];
+            return ['name' => $bin, 'ok' => false, 'detail' => $this->l10n->t('não encontrado no PATH')];
         }
 
         $proc = @proc_open([$found, $arg], [
@@ -224,7 +244,7 @@ class SettingsController extends Controller {
             2 => ['pipe', 'w'],
         ], $pipes);
         if (!is_resource($proc)) {
-            return ['name' => $bin, 'ok' => false, 'detail' => 'falha ao executar'];
+            return ['name' => $bin, 'ok' => false, 'detail' => $this->l10n->t('falha ao executar')];
         }
         $stdout = stream_get_contents($pipes[1]) ?: '';
         fclose($pipes[1]);
@@ -234,7 +254,7 @@ class SettingsController extends Controller {
         return [
             'name' => $bin,
             'ok' => $rc === 0,
-            'detail' => $rc === 0 ? ($first ?: 'OK') : 'erro de execução'
+            'detail' => $rc === 0 ? ($first ?: 'OK') : $this->l10n->t('erro de execução')
         ];
     }
 
@@ -259,45 +279,46 @@ class SettingsController extends Controller {
             $testUrl = match($provider) {
                 'ollama' => rtrim($url, '/') . '/api/tags',
                 'openai' => 'https://api.openai.com/v1/models',
-                'gemini' => 'https://generativelanguage.googleapis.com/v1/models?key=' . $apiKey,
+                'gemini' => 'https://generativelanguage.googleapis.com/v1/models',
                 default => $url
             };
 
-            $ch = curl_init($testUrl);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-
-            if (!empty($apiKey) && $provider !== 'gemini') {
+            // Keys travel in headers, never in the URL.
+            $headers = [];
+            if (!empty($apiKey)) {
                 $headers = match($provider) {
-                    'openai' => ['Authorization: Bearer ' . $apiKey],
+                    'openai' => ['Authorization' => 'Bearer ' . $apiKey],
+                    'gemini' => ['x-goog-api-key' => $apiKey],
                     default => []
                 };
-                if (!empty($headers)) {
-                    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-                }
             }
 
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+            // IClient, like the real processing: same proxy settings and same
+            // refusal of local addresses, so "OK" here means processing works.
+            $response = $this->clientService->newClient()->get($testUrl, [
+                'headers' => $headers,
+                'timeout' => 10,
+                'connect_timeout' => 5,
+                'http_errors' => false,
+            ]);
+            $httpCode = $response->getStatusCode();
 
             if ($httpCode >= 200 && $httpCode < 400) {
                 return new JSONResponse([
                     'status' => 'success',
-                    'message' => 'Conexao estabelecida com sucesso!'
+                    'message' => $this->l10n->t('Conexão estabelecida com sucesso!')
                 ]);
-            } else {
-                return new JSONResponse([
-                    'status' => 'error',
-                    'message' => "Falha na conexao. Codigo HTTP: {$httpCode}"
-                ], 400);
             }
-
-        } catch (\Exception $e) {
             return new JSONResponse([
                 'status' => 'error',
-                'message' => 'Erro ao testar conexao: ' . $e->getMessage()
+                'message' => $this->l10n->t('Falha na conexão. Código HTTP: %s', [(string)$httpCode])
+            ], 400);
+        } catch (LocalServerException $e) {
+            return new JSONResponse(['status' => 'error', 'message' => $this->localBlockedHint()], 400);
+        } catch (\Throwable $e) {
+            return new JSONResponse([
+                'status' => 'error',
+                'message' => $this->l10n->t('Erro ao testar a conexão: %s', [$this->redactor->redact($e->getMessage())])
             ], 500);
         }
     }

@@ -1,14 +1,16 @@
 # Makefile for the Audiolog Nextcloud app.
 #
 # Targets:
-#   make build      → produce build/audiolog-X.Y.Z.tar.gz ready for the
-#                     Nextcloud app store / `occ app:install --url=`
+#   make build      → produce build/appstore/audiolog-X.Y.Z.tar.gz from the
+#                     committed HEAD (git archive of an explicit path list)
 #   make sign       → sign the tarball with the app's certificate (private
 #                     key in ~/.nextcloud/certificates/audiolog.key)
 #   make release    → create the GitHub Release v<version> with the signed-build
 #                     tarball and the CHANGELOG notes (tag must be pushed first)
+#   make check-package → verify the tarball (also run by build and sign)
 #   make clean      → wipe the build/ dir
 #   make lint       → php -l on every .php file
+#   make test       → phpunit + jest (after composer install / npm install)
 #
 # Convention: the version that ends up in the tarball name comes from
 # appinfo/info.xml so we can't ship a mismatch.
@@ -22,39 +24,40 @@ appstore_dir=$(build_dir)/appstore
 version=$(shell xmllint --xpath "string(/info/version)" appinfo/info.xml 2>/dev/null \
               || grep -oE '<version>[^<]+' appinfo/info.xml | head -1 | sed 's/<version>//')
 
-# Files NOT to ship in the tarball: dev-only stuff, dotfiles, build output.
-exclude_patterns=\
-	--exclude='.git*' \
-	--exclude='build' \
-	--exclude='.DS_Store' \
-	--exclude='.idea' \
-	--exclude='.vscode' \
-	--exclude='node_modules' \
-	--exclude='*.log' \
-	--exclude='Makefile' \
-	--exclude='tests' \
-	--exclude='dist' \
-	--exclude='docs/screenshots'
+# What ships: an explicit list of VERSIONED paths, packed with `git archive`
+# from HEAD. Untracked or ignored files (.remember/, .DS_Store, ._*, vendor/,
+# node_modules/, build/, dist/) can never end up in the tarball, and the
+# result is checked by tools/check-tarball.py before signing.
+ship_paths=appinfo lib templates js css img l10n LICENSE CHANGELOG.md README.md
 
 .PHONY: all
 all: build
 
 .PHONY: build
 build: clean
-	@echo "→ Building $(app_name) $(version)"
+	@echo "→ Building $(app_name) $(version) from HEAD"
+	@# Uncommitted changes in shipped paths would silently stay out of the
+	@# tarball (git archive packs HEAD): refuse instead.
+	@test -z "$$(git status --porcelain -- $(ship_paths))" || { \
+		echo "✗ Uncommitted changes in shipped paths — commit them first:"; \
+		git status --short -- $(ship_paths); exit 1; }
 	@mkdir -p $(appstore_dir)
 	@# Tarball MUST contain exactly one top-level dir named after the app id.
-	@# COPYFILE_DISABLE=1 impede o tar do macOS de gravar AppleDouble (._*);
-	@# --exclude='._*' é rede de segurança portável (macOS + Linux).
-	@cd $(CURDIR)/.. && COPYFILE_DISABLE=1 tar \
-		$(exclude_patterns) --exclude='._*' \
-		-czf $(appstore_dir)/$(app_name)-$(version).tar.gz \
-		$(app_name)/
+	@git archive --format=tar --prefix=$(app_name)/ HEAD $(ship_paths) \
+		| gzip -n -9 > $(appstore_dir)/$(app_name)-$(version).tar.gz
 	@echo "→ Output: $(appstore_dir)/$(app_name)-$(version).tar.gz"
 	@ls -lh $(appstore_dir)/$(app_name)-$(version).tar.gz
+	@$(MAKE) --no-print-directory check-package
+
+# Fails on ._*, .DS_Store, .remember/, tests/, build/, dist/, dev tooling,
+# wrong top-level dir or a version mismatch with info.xml.
+.PHONY: check-package
+check-package:
+	@python3 tools/check-tarball.py $(appstore_dir)/$(app_name)-$(version).tar.gz $(version)
 
 .PHONY: sign
 sign: build
+	@$(MAKE) --no-print-directory check-package
 	@echo "→ Signing $(app_name) $(version)"
 	@mkdir -p $(sign_dir)
 	@openssl dgst -sha512 -sign ~/.nextcloud/certificates/$(app_name).key \
@@ -91,11 +94,13 @@ test: test-php test-js
 
 .PHONY: test-php
 test-php:
-	@cd tests && phpunit -c phpunit.xml || echo "(phpunit not installed locally — run from a Nextcloud test container)"
+	@test -x vendor/bin/phpunit || { echo "Run 'composer install' first (dev-only, vendor/ is git-ignored)"; exit 1; }
+	@php -d memory_limit=1G vendor/bin/phpunit -c tests/phpunit.xml
 
 .PHONY: test-js
 test-js:
-	@cd tests && npx jest --config jest.config.js || echo "(jest not installed locally — run 'npm i -D jest' first)"
+	@test -d node_modules/jest || { echo "Run 'npm install' first (dev-only, node_modules/ is git-ignored)"; exit 1; }
+	@npx jest --config tests/jest.config.js
 
 .PHONY: version
 version:

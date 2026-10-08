@@ -19,7 +19,7 @@ class Application extends App implements IBootstrap {
     }
 
     public function boot(IBootContext $context): void {
-        // Navigation is handled via info.xml
-        // Permission check is done in PageController and ApiController
+        // Navigation is handled via info.xml. Group access (allowed_groups) is
+        // checked by PageController::index and by every ApiController endpoint.
     }
 }

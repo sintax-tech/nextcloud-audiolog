@@ -4,7 +4,9 @@ declare(strict_types=1);
 namespace OCA\Audiolog\Controller;
 
 use OCA\Audiolog\AppInfo\Application;
+use OCA\Audiolog\Service\PermissionService;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -25,7 +27,8 @@ class PageController extends Controller {
         IRequest $request,
         IConfig $config,
         IURLGenerator $urlGenerator,
-        IL10N $l10n
+        IL10N $l10n,
+        private PermissionService $permissions
     ) {
         parent::__construct(Application::APP_ID, $request);
         $this->config = $config;
@@ -36,6 +39,14 @@ class PageController extends Controller {
     #[NoAdminRequired]
     #[NoCSRFRequired]
     public function index(): TemplateResponse {
+        // Users outside `allowed_groups` get a plain explanation instead of
+        // the app UI (whose API calls would all answer 403 anyway).
+        if (!$this->permissions->currentUserHasAccess()) {
+            return new TemplateResponse(Application::APP_ID, 'access-denied', [], TemplateResponse::RENDER_AS_USER, Http::STATUS_FORBIDDEN);
+        }
+
+        Util::addScript(Application::APP_ID, 'audiolog-text-utils');
+        Util::addScript(Application::APP_ID, 'audiolog-recovery');
         Util::addScript(Application::APP_ID, 'audiolog-speaker-naming');
         Util::addScript(Application::APP_ID, 'audiolog-main');
         Util::addStyle(Application::APP_ID, 'style');
@@ -78,41 +89,21 @@ class PageController extends Controller {
             'realtime_provider' => $realtimeProvider,
         ]);
 
-        // CSP: only whitelist the domains the chosen provider actually needs.
-        // Adding everything-for-everyone makes the app look like it's calling
-        // Google even when the admin picked OpenAI or Ollama.
-        $csp = new ContentSecurityPolicy();
-        $aiProvider = $this->config->getAppValue(Application::APP_ID, 'ai_provider', 'gemini');
-        if ($aiProvider === 'gemini') {
-            $csp->addAllowedConnectDomain('https://generativelanguage.googleapis.com');
-            $csp->addAllowedConnectDomain('wss://generativelanguage.googleapis.com');
-        } elseif ($aiProvider === 'openai') {
-            $csp->addAllowedConnectDomain('https://api.openai.com');
-        } elseif ($aiProvider === 'ollama') {
-            // Ollama URL is admin-configurable (LAN/cloud). Whitelist just
-            // the host that's currently set — anything else is rejected.
-            $aiUrl = $this->config->getAppValue(Application::APP_ID, 'ai_url', '');
-            if ($aiUrl !== '') {
-                $parsed = parse_url($aiUrl);
-                if (!empty($parsed['scheme']) && !empty($parsed['host'])) {
-                    $port = !empty($parsed['port']) ? (':' . $parsed['port']) : '';
-                    $csp->addAllowedConnectDomain($parsed['scheme'] . '://' . $parsed['host'] . $port);
-                }
-            }
-        }
-        // Realtime STT: only add the domain the admin actually picked.
-        if ($enableRealtimeStt) {
-            if ($realtimeProvider === 'gemini-live') {
-                $csp->addAllowedConnectDomain('wss://generativelanguage.googleapis.com');
-                $csp->addAllowedConnectDomain('https://generativelanguage.googleapis.com');
-            } elseif ($realtimeProvider === 'google-stt') {
-                $csp->addAllowedConnectDomain('https://speech.googleapis.com');
-            }
-            // 'web-speech' runs entirely inside the browser — no extra origin.
-        }
+        $csp = $this->buildContentSecurityPolicy();
         $response->setContentSecurityPolicy($csp);
 
         return $response;
+    }
+
+    /**
+     * The page never calls an AI or speech provider from the browser: uploads,
+     * analysis and live Google STT all go through this app's own endpoints.
+     * So the CSP opens no extra origin (and the admin's internal Ollama URL
+     * never appears in a response header). Web Speech runs in the browser
+     * engine and needs no connect-src either.
+     */
+    private function buildContentSecurityPolicy(): ContentSecurityPolicy {
+        return new ContentSecurityPolicy();
     }
 
     /**

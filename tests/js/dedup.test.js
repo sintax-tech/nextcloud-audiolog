@@ -1,24 +1,10 @@
 /**
  * Tests for the suffix/prefix dedup helper used by the live transcription
- * paths. Extracted as a standalone module here so we can test it without
- * the rest of the live recognition machinery.
+ * paths. The helper lives in js/audiolog-text-utils.js, the same file the
+ * page loads, so this tests the shipped code.
  */
 
-// Mirrored implementation of `findTextOverlap` from audiolog-main.js — kept
-// here so the test stays self-contained. If you change one, change both.
-function findTextOverlap(prev, next) {
-    if (!prev || !next) return 0;
-    const prevTail = prev.slice(-80).toLowerCase();
-    const nextHead = next.slice(0, 80).toLowerCase();
-    const max = Math.min(prevTail.length, nextHead.length);
-    for (let len = max; len >= 4; len--) {
-        if (prevTail.slice(-len) === nextHead.slice(0, len)) {
-            const boundary = next.slice(0, len).search(/\s\S*$/);
-            return boundary > 0 ? boundary : len;
-        }
-    }
-    return 0;
-}
+const { findTextOverlap } = require('../../js/audiolog-text-utils.js');
 
 describe('findTextOverlap', () => {
     it('returns 0 for empty inputs', () => {
