@@ -15,32 +15,28 @@ https://github.com/sintax-tech/nextcloud-audiolog/releases/download/vX.Y.Z/audio
 Replace `X.Y.Z` with the new version.
 
 1. **Bump the version** in `appinfo/info.xml` (`<version>X.Y.Z</version>`) and validate it against the XSD (see below). When the store text changes, update all three languages together. If the supported Nextcloud range changes, update `<nextcloud min-version=... max-version=...>` and the range in `README.md` as well.
-2. **Update `CHANGELOG.md` and `README.md`** (a `## X.Y.Z - <date>` section in the changelog; it becomes the release notes).
-3. **Build the tarball:**
+2. **Update `CHANGELOG.md` and `README.md`** (a `## X.Y.Z - <date>` section in the changelog; it becomes the release notes). Commit steps 1 and 2:
+   ```bash
+   git add appinfo/info.xml README.md CHANGELOG.md
+   git commit -m "X.Y.Z: <summary>"
+   ```
+3. **Build the tarball** from the committed `HEAD` (commit steps 1 and 2 first; the build refuses uncommitted changes in shipped paths):
    ```bash
    make build
-   # → build/appstore/audiolog-X.Y.Z.tar.gz
+   # → build/appstore/audiolog-X.Y.Z.tar.gz, then runs make check-package
    ```
-   The Makefile runs `tar` with `COPYFILE_DISABLE=1` and `--exclude='._*'`, so macOS does not add AppleDouble files. Then check it with Python's `tarfile`. It must have:
+   Since 1.0.5 the tarball is made with `git archive` from an explicit list of versioned paths (`appinfo lib templates js css img l10n LICENSE CHANGELOG.md README.md`). Untracked or ignored files (`.remember/`, `.DS_Store`, `._*`, `vendor/`, `node_modules/`, `build/`, `dist/`) cannot get in. Until 1.0.4 the build packed the whole working directory, and 1.0.3 and 1.0.4 shipped the local `.remember/` session notes.
+
+   `make check-package` (run by `make build` and again by `make sign`) runs `tools/check-tarball.py`, which fails unless the tarball has:
    - exactly one top-level directory, `audiolog/`;
    - no `._*` entries and no `.DS_Store`;
-   - no `tests/`, `build/` or `dist/` inside;
+   - no `.remember/`, `tests/`, `build/`, `dist/`, `docs/`, `tools/`, `vendor/`, `node_modules/` and no dev files (`Makefile`, `PUBLISHING.md`, `composer.*`, `package*.json`);
    - `<version>X.Y.Z</version>` in the inner `appinfo/info.xml`.
-   ```bash
-   python3 - <<'PY'
-   import tarfile
-   t = tarfile.open('build/appstore/audiolog-X.Y.Z.tar.gz')
-   n = t.getnames()
-   print({x.split('/')[0] for x in n})
-   print([x for x in n if '._' in x or '.DS_Store' in x])
-   print([x for x in n if x.split('/')[1:2] in (['tests'], ['build'], ['dist'])])
-   print(b'<version>X.Y.Z</version>' in t.extractfile('audiolog/appinfo/info.xml').read())
-   PY
-   ```
+
 4. **Sign:**
    ```bash
    make sign
-   # → build/sign/audiolog-X.Y.Z.sig (base64), also printed on screen
+   # → rebuilds, re-checks, then build/sign/audiolog-X.Y.Z.sig (base64), also printed on screen
    ```
    It uses `~/.nextcloud/certificates/audiolog.key`. Never copy or print that key. Verify the signature against the certificate:
    ```bash
@@ -49,10 +45,8 @@ Replace `X.Y.Z` with the new version.
    openssl dgst -sha512 -verify /tmp/audiolog-pub.pem -signature /tmp/audiolog.sig.bin build/appstore/audiolog-X.Y.Z.tar.gz
    ```
    It must print `Verified OK`.
-5. **Commit and push to `main`** (version bump, README and CHANGELOG; no tarball):
+5. **Push to `main`** the commit with the version bump, README and CHANGELOG (no tarball), made before step 3:
    ```bash
-   git add appinfo/info.xml README.md CHANGELOG.md
-   git commit -m "X.Y.Z: <summary>"
    git push origin main
    ```
 6. **Tag the release** and push the tag:
@@ -84,7 +78,7 @@ Replace `X.Y.Z` with the new version.
 
 ## Watch out for macOS `._*` files
 
-Without `COPYFILE_DISABLE=1`, the macOS `tar` adds AppleDouble files (`._*`) to the tarball. They broke the Nextcloud updater, which tried to handle `apps/._audiolog` as an app directory. This was fixed in 1.0.2 and is why the Makefile sets `COPYFILE_DISABLE=1` and `--exclude='._*'`. Always run the tarball check in step 3.
+Until 1.0.4 the build used the macOS `tar`, which adds AppleDouble files (`._*`) without `COPYFILE_DISABLE=1`. They broke the Nextcloud updater, which tried to handle `apps/._audiolog` as an app directory (fixed in 1.0.2). Since 1.0.5 the build uses `git archive`, which never adds them, and `make check-package` refuses any `._*` entry anyway.
 
 ## Validating `info.xml` against the XSD
 
@@ -120,4 +114,4 @@ These steps were already done for the first release and are kept for reference.
 
 - **"Certificate validation failed"**: the certificate does not match the signature. Rebuild everything (`make clean build sign`), check that you uploaded the file from the release URL, and check the certificate path in the Makefile.
 - **"info.xml schema validation failed"**: run the XSD check above; compare against the previous accepted version.
-- **"Tarball must contain exactly one directory"**: run `make clean` and rebuild, then run the tarball check (macOS `._*` files are the usual cause).
+- **"Tarball must contain exactly one directory"**: run `make clean build`; `make check-package` reports what is wrong.

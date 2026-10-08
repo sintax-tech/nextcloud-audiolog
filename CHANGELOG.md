@@ -12,6 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - The Deck board picker lists every board the user can edit, including boards shared through a group or a circle, and no longer lists archived boards or boards the user can only read. Board titles are no longer written to the log.
 - Live transcription with Google Cloud Speech-to-Text never started ("Invalid configuration"): the page still expected the API key in the browser after the key moved to the server-side proxy.
+- The app tarball is now built with `git archive` from an explicit list of versioned paths and checked before signing. The 1.0.3 and 1.0.4 tarballs also contained the developer's local `.remember/` session notes (no credentials).
 
 ## 1.0.4 - 2026-10-08
 
