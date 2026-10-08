@@ -54,7 +54,7 @@ class MediaTools {
                 '-t', sprintf('%.3f', $durationSec),
                 '-i', $input,
                 '-vn', '-acodec', 'libmp3lame', '-ar', '16000', '-ac', '1', '-q:a', '4',
-                $output,
+                '-f', 'mp3', $output,
             ]
         );
     }
@@ -62,7 +62,8 @@ class MediaTools {
     public function extractAudioCommand(string $input, string $output): array {
         return array_merge(
             ['ffmpeg', '-nostdin', '-y'], self::QUIET, self::PROTOCOLS, self::FORMATS,
-            ['-i', $input, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', $output]
+            // Output format explicit: temp names need not end in ".mp3".
+            ['-i', $input, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', '-f', 'mp3', $output]
         );
     }
 

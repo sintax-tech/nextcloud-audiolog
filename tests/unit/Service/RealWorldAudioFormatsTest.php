@@ -35,6 +35,7 @@ use PHPUnit\Framework\TestCase;
  */
 class RealWorldAudioFormatsTest extends TestCase {
     private array $tmp = [];
+    private ?string $sentMime = null;
 
     protected function tearDown(): void {
         foreach ($this->tmp as $f) {
@@ -47,7 +48,9 @@ class RealWorldAudioFormatsTest extends TestCase {
         return [
             'WhatsApp .opus' => ['whatsapp.opus', 'audio/ogg', 'audio/ogg'],
             'iPhone .m4a' => ['iphone.m4a', 'audio/x-m4a', 'audio/mp4'],
-            'MediaRecorder .webm' => ['browser.webm', 'audio/webm;codecs=opus', 'audio/webm'],
+            // Nextcloud maps .webm to video/webm: that file goes through the
+            // ffmpeg audio extraction (with the demuxer whitelist).
+            'MediaRecorder .webm' => ['browser.webm', 'audio/webm;codecs=opus', 'video/webm'],
         ];
     }
 
@@ -90,14 +93,18 @@ class RealWorldAudioFormatsTest extends TestCase {
 
     /** @dataProvider formats */
     public function testNextcloudFileIsAccepted(string $fixture, string $clientType, string $ncMime): void {
+        if (str_starts_with($ncMime, 'video/') && trim((string)shell_exec('command -v ffmpeg 2>/dev/null')) === '') {
+            $this->markTestSkipped('ffmpeg not installed (needed to extract audio from ' . $ncMime . ')');
+        }
         $fs = new FakeFs($this);
         $fs->addFile('Audios/' . $fixture, $this->fixture($fixture), $ncMime);
         $sent = 0;
         $response = $this->createMock(IResponse::class);
         $response->method('getBody')->willReturn(json_encode(['candidates' => [['content' => ['parts' => [['text' => 'ok']]]]]]));
         $client = $this->createMock(IClient::class);
-        $client->method('post')->willReturnCallback(function () use (&$sent, $response) {
+        $client->method('post')->willReturnCallback(function ($uri, $opts) use (&$sent, $response) {
             $sent++;
+            $this->sentMime = $opts['json']['contents'][0]['parts'][1]['inline_data']['mime_type'] ?? null;
             return $response;
         });
         $cs = $this->createMock(IClientService::class);
@@ -114,6 +121,10 @@ class RealWorldAudioFormatsTest extends TestCase {
 
         $this->assertSame('ok', $result['text']);
         $this->assertSame(1, $sent);
+        if (str_starts_with($ncMime, 'video/')) {
+            // Extracted by ffmpeg to mp3 before reaching the provider.
+            $this->assertSame('audio/mpeg', $this->sentMime);
+        }
     }
 
     /** @dataProvider formats */

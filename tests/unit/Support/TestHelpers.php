@@ -103,8 +103,10 @@ final class TestHelpers {
         $tm->method('getTemporaryFile')->willReturnCallback(function ($postFix = '') use ($dir) {
             $f = tempnam($dir, 'oc_tmp_');
             if ($postFix !== '') {
-                rename($f, $f . '-' . ltrim((string)$postFix, '.'));
-                $f .= '-' . ltrim((string)$postFix, '.');
+                // Same naming as OC\TempManager::buildFileNameWithSuffix: "<tmp>-.<ext>".
+                $named = $f . '-.' . ltrim((string)$postFix, '.');
+                rename($f, $named);
+                $f = $named;
             }
             chmod($f, 0600);
             return $f;
