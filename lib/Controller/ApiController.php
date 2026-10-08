@@ -18,6 +18,7 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\BackgroundJob\IJobList;
 use OCP\IConfig;
 use OCP\IGroupManager;
@@ -633,8 +634,12 @@ class ApiController extends Controller {
      * the API key from app config, and stream the JSON response back. The
      * key NEVER touches the client, so any user in `allowed_groups` can use
      * Google STT live transcription without a leak risk.
+     *
+     * Every call is billed on the admin's key: Nextcloud's rate limiter caps
+     * it per user (the client sends one ~5 s chunk at a time, ~12/min).
      */
     #[NoAdminRequired]
+    #[UserRateLimit(limit: 30, period: 60)]
     public function sttRecognize(): JSONResponse {
         try {
             $check = $this->requireAccess();

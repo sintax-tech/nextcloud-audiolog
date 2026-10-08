@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Security
 - Google API keys (Gemini and Cloud Speech-to-Text) are now sent in the `x-goog-api-key` header instead of the `?key=` query string. Before, a provider error (for example a 400 from Gemini) put the full URL, key included, in the exception message, which reached `nextcloud.log` and, for background jobs, the `error` field returned by `/api/status` to the user. Provider error messages are now masked before they reach the log, the job record or the HTTP response. **As a precaution, rotate the Gemini and Google STT API keys** configured in Audiolog, since they may already be in old log files.
 - Exporting tasks to Deck no longer writes straight into Deck's database tables. Any user of the app could create cards on any board of the instance by sending another board's list id. Cards are now created through Deck's own services (`CardService`, `StackService`, `BoardService`, `PermissionService`), which apply Deck's sharing rules, activity and notifications; Audiolog also checks that the list belongs to the chosen board and that the user can edit it, and refuses otherwise (HTTP 403). Checked against Deck 1.12 to 1.19 (Nextcloud 28 to 35).
+- The live transcription proxy (`/api/stt/recognize`), which spends the admin's Google key, is now limited to 30 requests per minute per user through Nextcloud's rate limiter (a normal session sends about 12).
+
+### Changed
+- The store description (English, Portuguese and Spanish) no longer says that live transcription with an external API key is restricted to admins: that option never existed. It now describes the server-side proxy and the per-user limit. The unused `realtime_stt_admin_only` setting is removed from the stored configuration on the next save of the admin settings.
 
 ### Fixed
 - The Deck board picker lists every board the user can edit, including boards shared through a group or a circle, and no longer lists archived boards or boards the user can only read. Board titles are no longer written to the log.

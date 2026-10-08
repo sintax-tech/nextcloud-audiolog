@@ -42,7 +42,6 @@ class SettingsController extends Controller {
         string $max_jobs_per_user_per_day = '50',
         string $use_google_stt_for_transcription = 'false',
         string $google_stt_api_key = '',
-        string $realtime_stt_admin_only = 'true',
         string $analysis_model = ''
     ): JSONResponse {
         try {
@@ -66,7 +65,9 @@ class SettingsController extends Controller {
             $this->config->setAppValue($this->appName, 'use_google_stt_for_transcription', $use_google_stt_for_transcription);
             // Google STT key is encrypted at rest like the Gemini key.
             $this->config->setAppValue($this->appName, 'google_stt_api_key', $this->crypto->encrypt($google_stt_api_key));
-            $this->config->setAppValue($this->appName, 'realtime_stt_admin_only', $realtime_stt_admin_only);
+            // Never read anywhere: dropped in 1.0.5 (the store text promised an
+            // admins-only switch that did not exist).
+            $this->config->deleteAppValue($this->appName, 'realtime_stt_admin_only');
             $this->config->setAppValue($this->appName, 'analysis_model', $analysis_model);
 
             $groupsJson = json_encode($allowed_groups ?? []);
@@ -99,7 +100,6 @@ class SettingsController extends Controller {
             'max_jobs_per_user_per_day' => $this->config->getAppValue($this->appName, 'max_jobs_per_user_per_day', '50'),
             'use_google_stt_for_transcription' => $this->config->getAppValue($this->appName, 'use_google_stt_for_transcription', 'false'),
             'google_stt_api_key' => $this->crypto->decrypt($this->config->getAppValue($this->appName, 'google_stt_api_key', '')),
-            'realtime_stt_admin_only' => $this->config->getAppValue($this->appName, 'realtime_stt_admin_only', 'true'),
             'analysis_model' => $this->config->getAppValue($this->appName, 'analysis_model', ''),
             'allowed_groups' => json_decode($allowedGroupsJson, true) ?: [],
         ]);
