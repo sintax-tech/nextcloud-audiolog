@@ -21,4 +21,18 @@ class AudioServiceNextcloudFileTest extends TestCase {
         $this->expectExceptionMessageMatches('/1 MB/');
         $svc->processNextcloudFile('alice', 'Music/big.wav', '', ['transcricao']);
     }
+
+    /** M2: a "video" whose content is an HLS playlist never reaches ffmpeg. */
+    public function testPlaylistDisguisedAsVideoIsRefused(): void {
+        $fs = new FakeFs($this);
+        $fs->addFile('Videos/meeting.mp4', "#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10,\nhttp://169.254.169.254/latest/meta-data\n", 'video/mp4');
+        $svc = TestHelpers::audioService($this, ['rootFolder' => $fs->rootFolder()]);
+
+        try {
+            $svc->processNextcloudFile('alice', 'Videos/meeting.mp4', '', ['transcricao']);
+            $this->fail('playlist must be refused');
+        } catch (\OCA\Audiolog\Exception\InvalidInputException $e) {
+            $this->assertSame(415, $e->getHttpStatus());
+        }
+    }
 }

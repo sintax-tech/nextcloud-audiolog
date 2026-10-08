@@ -26,7 +26,8 @@ class AudioService {
         private IConfig $config,
         private CryptoHelper $crypto,
         private JobMapper $jobMapper,
-        private SecretRedactor $redactor
+        private SecretRedactor $redactor,
+        private MediaTools $media
     ) {
     }
 
@@ -915,46 +916,16 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * isn't available or fails — caller should fall back to single-shot transcribe.
      */
     private function probeAudioDuration(string $audioPath): float {
-        $proc = @proc_open([
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', $audioPath,
-        ], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-
-        if (!is_resource($proc)) {
-            return 0.0;
-        }
-        $out = stream_get_contents($pipes[1]) ?: '';
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        proc_close($proc);
-        return (float)trim($out);
+        [$rc, $out] = $this->media->run($this->media->probeDurationCommand($audioPath));
+        return $rc === 0 ? (float)trim($out) : 0.0;
     }
 
     /**
      * Re-encode a slice of the audio to mp3 mono 16kHz, the smallest format
-     * Gemini will happily transcribe. Uses proc_open with array argv (no shell).
+     * Gemini will happily transcribe.
      */
     private function ffmpegSlice(string $inputPath, float $startSec, float $durationSec, string $outputPath): bool {
-        $proc = @proc_open([
-            'ffmpeg', '-nostdin', '-y',
-            '-ss', sprintf('%.3f', $startSec),
-            '-t', sprintf('%.3f', $durationSec),
-            '-i', $inputPath,
-            '-vn',
-            '-acodec', 'libmp3lame',
-            '-ar', '16000',
-            '-ac', '1',
-            '-q:a', '4',
-            $outputPath,
-        ], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-
-        if (!is_resource($proc)) return false;
-        // drain
-        stream_get_contents($pipes[1]);
-        stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        $rc = proc_close($proc);
+        [$rc] = $this->media->run($this->media->sliceCommand($inputPath, $startSec, $durationSec, $outputPath));
         return $rc === 0 && is_file($outputPath) && filesize($outputPath) > 0;
     }
 
@@ -1133,6 +1104,16 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
     }
 
     /**
+     * Refuse text playlists (m3u/HLS, ffconcat) named like media: ffmpeg would
+     * follow the URLs inside them.
+     */
+    private function assertNotPlaylist(string $content): void {
+        if ($this->media->looksLikePlaylist($content)) {
+            throw new InvalidInputException('O arquivo não é um áudio ou vídeo válido', 415);
+        }
+    }
+
+    /**
      * Check if the file is a video
      */
     private function isVideoFile(string $mimeType): bool {
@@ -1145,17 +1126,10 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
     private function extractAudioFromVideo(string $videoPath): array {
         $outputPath = sys_get_temp_dir() . '/audio_' . uniqid() . '.mp3';
 
-        // Use ffmpeg to extract audio
-        $command = sprintf(
-            'ffmpeg -i %s -vn -acodec libmp3lame -q:a 2 -y %s 2>&1',
-            escapeshellarg($videoPath),
-            escapeshellarg($outputPath)
-        );
-
-        exec($command, $output, $returnCode);
+        [$returnCode, , $stderr] = $this->media->run($this->media->extractAudioCommand($videoPath, $outputPath));
 
         if ($returnCode !== 0 || !file_exists($outputPath)) {
-            $this->logger->error("FFmpeg extraction failed: " . implode("\n", $output));
+            $this->logger->error('FFmpeg extraction failed: ' . substr($stderr, -2000));
             throw new \RuntimeException('Falha ao extrair áudio do vídeo. Verifique se ffmpeg está instalado.');
         }
 
@@ -1190,6 +1164,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             ]);
             throw new \RuntimeException('Falha ao ler arquivo');
         }
+        $this->assertNotPlaylist($audioContent);
 
         // If it's a video, extract audio first
         if ($this->isVideoFile($mimeType)) {
@@ -1286,6 +1261,8 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             if (!str_starts_with($mimeType, 'audio/') && !str_starts_with($mimeType, 'video/')) {
                 throw new InvalidInputException('O arquivo selecionado não é um arquivo de áudio ou vídeo', 415);
             }
+            // Nextcloud derives the type from the extension: check the bytes.
+            $this->assertNotPlaylist($audioContent);
 
             // If it's a video, extract audio first
             if ($this->isVideoFile($mimeType)) {

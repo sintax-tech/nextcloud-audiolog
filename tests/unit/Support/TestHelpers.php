@@ -70,6 +70,7 @@ final class TestHelpers {
             $crypto,
             $deps['jobMapper'] ?? $mock(JobMapper::class),
             $deps['redactor'] ?? new SecretRedactor($config, $crypto),
+            $deps['media'] ?? new \OCA\Audiolog\Service\MediaTools(),
         );
     }
 }
