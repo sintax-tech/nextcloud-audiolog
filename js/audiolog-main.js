@@ -1083,12 +1083,15 @@
         }
         elements.recoveryBanner.style.display = 'none';
         switchTab('new');
-        // Drop from IDB now that it's loaded into the UI.
-        dbDeleteRecording(id).catch(() => {});
-        // Auto-trigger processing
-        if (selectedFile) {
-            processAudio();
-        }
+        // The IndexedDB copy is the only copy of this audio: it is deleted
+        // only after processing succeeds. On failure processAudio() already
+        // showed the reason, and the entry stays 'interrupted' so the banner
+        // offers it again.
+        await window.AudiologRecovery.processRecovered(id, {
+            process: processAudio,
+            deleteRecording: dbDeleteRecording,
+            markUnsent: markRecordingUnsent,
+        });
     }
 
     async function recoveryDiscard() {
@@ -1117,8 +1120,9 @@
     }
 
     // Process audio
+    /** Returns true when the processing succeeded, false otherwise. */
     async function processAudio() {
-        if ((!selectedFile && !selectedNextcloudPath) || isProcessing) return;
+        if ((!selectedFile && !selectedNextcloudPath) || isProcessing) return false;
 
         // Get all selected output types
         const selectedTypes = [];
@@ -1128,7 +1132,7 @@
 
         if (selectedTypes.length === 0) {
             showNotification(t('audiolog', 'Selecione pelo menos um tipo de saída'), 'error');
-            return;
+            return false;
         }
 
         isProcessing = true;
@@ -1201,11 +1205,13 @@
             setTimeout(() => {
                 showResult(result);
             }, 500);
+            return true;
 
         } catch (err) {
             console.error('Erro ao processar:', err);
             showNotification(t('audiolog', 'Erro ao processar audio:') + ' ' + err.message, 'error');
             hideProcessing();
+            return false;
         } finally {
             isProcessing = false;
         }
