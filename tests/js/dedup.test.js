@@ -1,3 +1,7 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sintax (Jhonatan Jaworski) <contato@sintax.tech>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 /**
  * Tests for the suffix/prefix dedup helper used by the live transcription
  * paths. The helper lives in js/audiolog-text-utils.js, the same file the

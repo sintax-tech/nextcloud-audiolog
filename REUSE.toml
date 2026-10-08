@@ -1,0 +1,43 @@
+version = 1
+
+[[annotations]]
+path = [
+    ".gitignore",
+    "CHANGELOG.md",
+    "PUBLISHING.md",
+    "README.md",
+    "appinfo/info.xml",
+    "composer.json",
+    "composer.lock",
+    "dist/audiolog-1.0.0.tar.gz",
+    "dist/audiolog-1.0.1.tar.gz",
+    "dist/audiolog-1.0.2.tar.gz",
+    "dist/audiolog-1.0.3.tar.gz",
+    "dist/audiolog-1.0.4.tar.gz",
+    "docs/screenshots/01-record.png",
+    "docs/screenshots/02-live-running.png",
+    "docs/screenshots/03-recordings.png",
+    "docs/screenshots/04-live-setup.png",
+    "img/app-dark.svg",
+    "img/app.svg",
+    "img/icon-192.svg",
+    "img/icon-512.svg",
+    "l10n/en.json",
+    "l10n/es.json",
+    "l10n/pt_BR.json",
+    "package-lock.json",
+    "package.json",
+    "tests/README.md",
+    "tests/fixtures/browser.webm",
+    "tests/fixtures/iphone.m4a",
+    "tests/fixtures/whatsapp.opus",
+    "tests/phpunit.xml",
+    "LICENSE",
+    "NOTICE",
+    "THIRD-PARTY-NOTICES.md",
+    "REUSE.toml",
+    "l10n/*.js",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Sintax (Jhonatan Jaworski) <contato@sintax.tech>"
+SPDX-License-Identifier = "AGPL-3.0-or-later"

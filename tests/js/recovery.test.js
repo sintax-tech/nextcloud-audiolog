@@ -1,3 +1,7 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sintax (Jhonatan Jaworski) <contato@sintax.tech>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 /**
  * N1: "Process now" on the recovery banner must delete the IndexedDB copy
  * only after the processing succeeded; on failure the recording stays

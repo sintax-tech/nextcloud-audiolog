@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Sintax (Jhonatan Jaworski) <contato@sintax.tech>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Check an Audiolog app tarball before signing it.
 
 Usage: tools/check-tarball.py <tarball> <expected-version>

@@ -76,7 +76,7 @@
 - La Web Speech API se ejecuta íntegramente en el navegador: ninguna clave sale del servidor
     ]]></description>
     <version>1.0.5</version>
-    <licence>agpl</licence>
+    <licence>AGPL-3.0-or-later</licence>
     <author mail="jhonatan@sintax.tech">Jhonatan Jaworski</author>
     <namespace>Audiolog</namespace>
     <category>ai</category>

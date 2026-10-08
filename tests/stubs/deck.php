@@ -1,4 +1,8 @@
 <?php
+/*
+ * SPDX-FileCopyrightText: 2026 Sintax (Jhonatan Jaworski) <contato@sintax.tech>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 /**
  * Minimal stand-ins for the Deck classes Audiolog talks to, so the tests can
  * mock them without a Deck checkout. Method names and positional parameters

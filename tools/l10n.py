@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Sintax (Jhonatan Jaworski) <contato@sintax.tech>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Audiolog l10n helper (dev-only, not shipped).
 
 The l10n/<lang>.json files are the source of truth; l10n/<lang>.js is

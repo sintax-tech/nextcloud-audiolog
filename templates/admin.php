@@ -1,7 +1,12 @@
 <?php
+/*
+ * SPDX-FileCopyrightText: 2026 Sintax (Jhonatan Jaworski) <contato@sintax.tech>
+ * SPDX-FileCopyrightText: Google Inc. and Pictogrammers contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later AND Apache-2.0
+ */
 /**
  * Assistente de Áudio - Admin Settings Template
- * @copyright 2025 Jhonatan Jaworski
+ * @copyright 2026 Sintax (Jhonatan Jaworski)
  */
 
 \OCP\Util::addScript('audiolog', 'audiolog-admin');

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Sintax (Jhonatan Jaworski) <contato@sintax.tech>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Makefile for the Audiolog Nextcloud app.
 #
 # Targets:

@@ -1,7 +1,11 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sintax (Jhonatan Jaworski) <contato@sintax.tech>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 /**
  * Audiolog Service Worker
  * @author Jhonatan Jaworski
- * @copyright 2025
+ * @copyright 2026 Sintax (Jhonatan Jaworski)
  *
  * Lightweight SW for the audiolog NextCloud app.
  *

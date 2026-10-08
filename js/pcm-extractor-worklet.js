@@ -1,3 +1,7 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sintax (Jhonatan Jaworski) <contato@sintax.tech>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 /**
  * AudioWorkletProcessor that converts the input audio frames to little-endian
  * PCM 16-bit at the AudioContext sample rate (we run the context at 16 kHz so

@@ -1,7 +1,11 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sintax (Jhonatan Jaworski) <contato@sintax.tech>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 /**
  * Assistente de Audio - Admin Settings JavaScript
  * @author Jhonatan Jaworski
- * @copyright 2025
+ * @copyright 2026 Sintax (Jhonatan Jaworski)
  */
 
 (function() {

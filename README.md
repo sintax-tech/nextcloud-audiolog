@@ -129,9 +129,15 @@ Releases are published as a signed tarball attached to a GitHub Release (`vX.Y.Z
 
 ## License
 
-AGPL-3.0-or-later. See [LICENSE](LICENSE).
+AGPL-3.0-or-later. See [LICENSE](LICENSE) and the full text in [LICENSES](LICENSES/AGPL-3.0-or-later.txt). The additional term in [NOTICE](NOTICE), under section 7(b), requires preserving visible Sintax attribution in the administration/settings page and user-facing documentation, together with the copyright and NOTICE files.
+
+## Credits
+
+Third-party software, embedded icons, development dependencies and external requirements are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## About Sintax
+
+Developed by Sintax — https://sintax.tech
 
 Built and maintained by [Sintax](https://sintax.tech).
 
@@ -229,7 +235,11 @@ As releases são publicadas como um tarball assinado anexado a uma GitHub Releas
 
 ### Licença
 
-AGPL-3.0-or-later. Veja [LICENSE](LICENSE).
+AGPL-3.0-or-later. Veja [LICENSE](LICENSE) e o texto completo em [LICENSES](LICENSES/AGPL-3.0-or-later.txt). O termo adicional de [NOTICE](NOTICE), conforme a seção 7(b), exige preservar o crédito visível à Sintax na administração/configurações e na documentação ao usuário, junto aos arquivos de copyright e NOTICE.
+
+### Créditos
+
+Software de terceiros, ícones embutidos, dependências de desenvolvimento e requisitos externos estão em [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Sobre a Sintax
 
