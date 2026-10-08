@@ -1659,34 +1659,107 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         return $node instanceof \OCP\Files\File ? $node : null;
     }
 
+    /**
+     * Pull tasks out of the model's answer. Only two shapes count:
+     *  1. the table the prompt asks for ("| Tarefa | Responsável | Prazo |",
+     *     or its en/es translation, optionally with a leading "#" column);
+     *  2. a bullet list under a tasks heading ("## Tarefas", "Tasks:", ...),
+     *     with optional "- Responsável: X - Prazo: Y" suffixes.
+     * Other tables of the minutes (participants, agenda) are ignored.
+     *
+     * @return list<array{title:string,assignee:string,dueDate:string}>
+     */
     private function extractTasks(string $text): array {
-        $tasks = [];
-
-        // Pattern to match tasks in table format or bullet points
-        $patterns = [
-            '/\|\s*\d+\s*\|\s*([^|]+)\s*\|\s*([^|]*)\s*\|\s*([^|]*)\s*\|/m',
-            '/\|\s*([^|]+)\s*\|\s*([^|]*)\s*\|\s*([^|]*)\s*\|/m',
-            '/[-*]\s*(.+?)(?:\s*[-–]\s*Responsável:\s*([^,\n]+))?(?:\s*[-–]\s*Prazo:\s*([^\n]+))?/mi',
-        ];
-
-        foreach ($patterns as $pattern) {
-            if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
-                foreach ($matches as $match) {
-                    $task = trim($match[1] ?? '');
-                    // Skip header rows
-                    if (!empty($task) && strlen($task) > 3 &&
-                        !preg_match('/^(tarefa|task|#|---)/i', $task)) {
-                        $tasks[] = [
-                            'title' => $task,
-                            'assignee' => trim($match[2] ?? ''),
-                            'dueDate' => trim($match[3] ?? '')
-                        ];
-                    }
-                }
-            }
+        $lines = preg_split('/\R/u', $text) ?: [];
+        $tasks = $this->extractTaskTable($lines);
+        if ($tasks === []) {
+            $tasks = $this->extractTaskBullets($lines);
         }
-
         return array_slice($tasks, 0, 20);
+    }
+
+    private const TASK_HEADER = '/^(tarefas?|tasks?|tareas?|a[cç][aã]o|a[cç][oõ]es|action( items?)?|acci[oó]n)$/iu';
+
+    /** @return list<string> cells of a markdown table row, or [] if not a row */
+    private function tableCells(string $line): array {
+        $line = trim($line);
+        if (!str_starts_with($line, '|') || !str_ends_with($line, '|') || strlen($line) < 3) {
+            return [];
+        }
+        return array_map(fn ($c) => trim(str_replace('**', '', $c)), explode('|', substr($line, 1, -1)));
+    }
+
+    private function extractTaskTable(array $lines): array {
+        $tasks = [];
+        $count = count($lines);
+        for ($i = 0; $i < $count; $i++) {
+            $header = $this->tableCells($lines[$i]);
+            if (count($header) < 2) {
+                continue;
+            }
+            $offset = ($header[0] === '#' || $header[0] === 'Nº' || $header[0] === 'N°') ? 1 : 0;
+            if (!preg_match(self::TASK_HEADER, $header[$offset] ?? '')) {
+                continue;
+            }
+            for ($j = $i + 1; $j < $count; $j++) {
+                $cells = $this->tableCells($lines[$j]);
+                if ($cells === []) {
+                    break;
+                }
+                if (preg_match('/^:?-{2,}:?$/', $cells[0] ?? '')) {
+                    continue; // separator row
+                }
+                $title = $cells[$offset] ?? '';
+                if (mb_strlen($title) < 3) {
+                    continue;
+                }
+                $tasks[] = [
+                    'title' => $title,
+                    'assignee' => $cells[$offset + 1] ?? '',
+                    'dueDate' => $cells[$offset + 2] ?? '',
+                ];
+            }
+            $i = $j - 1;
+        }
+        return $tasks;
+    }
+
+    private function extractTaskBullets(array $lines): array {
+        $tasks = [];
+        $inSection = false;
+        foreach ($lines as $line) {
+            $trim = trim($line);
+            // A heading (markdown "#", bold "**X**" or "X:") opens/closes the section.
+            $heading = null;
+            if (preg_match('/^#{1,6}\s*(.+?)\s*:?\s*$/u', $trim, $m)
+                || preg_match('/^\*\*(.+?)\*\*\s*:?\s*$/u', $trim, $m)
+                || preg_match('/^([^\-*•|].{0,40}?):\s*$/u', $trim, $m)) {
+                $heading = trim(str_replace('**', '', $m[1]), " :\t");
+            }
+            if ($heading !== null) {
+                $inSection = (bool)preg_match('/^(tarefas?|tasks?|tareas?|encaminhamentos|action items|next steps|pr[oó]ximos pasos)\b/iu', $heading);
+                continue;
+            }
+            if (!$inSection || !preg_match('/^\s*[-*•]\s+(.+)$/u', $line, $m)) {
+                continue;
+            }
+            $body = trim(str_replace('**', '', $m[1]));
+            $assignee = '';
+            $due = '';
+            if (preg_match('/\s+[-–—]\s*(?:Prazo|Due|Deadline|Plazo)\s*:\s*(.+)$/iu', $body, $d)) {
+                $due = trim($d[1]);
+                $body = trim(substr($body, 0, -strlen($d[0])));
+            }
+            if (preg_match('/\s+[-–—]\s*(?:Respons[aá]vel|Responsible|Owner|Responsable)\s*:\s*(.+)$/iu', $body, $r)) {
+                $assignee = trim($r[1]);
+                $body = trim(substr($body, 0, -strlen($r[0])));
+            }
+            if (mb_strlen($body) < 3) {
+                continue;
+            }
+            $tasks[] = ['title' => $body, 'assignee' => $assignee, 'dueDate' => $due];
+        }
+        return $tasks;
     }
 
     public function getTaskStatus(int $taskId): array {
