@@ -5,6 +5,7 @@ namespace OCA\Audiolog\BackgroundJob;
 
 use OCA\Audiolog\Db\JobMapper;
 use OCA\Audiolog\Service\AudioService;
+use OCA\Audiolog\Service\SecretRedactor;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
 use Psr\Log\LoggerInterface;
@@ -34,7 +35,8 @@ class ProcessAudioJob extends QueuedJob {
         ITimeFactory $time,
         private AudioService $audioService,
         private JobMapper $jobMapper,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private SecretRedactor $redactor
     ) {
         parent::__construct($time);
     }
@@ -88,9 +90,12 @@ class ProcessAudioJob extends QueuedJob {
             $job->setFinishedAt($this->time->getTime());
             $this->jobMapper->update($job);
         } catch (\Throwable $e) {
-            $this->logger->error('Audiolog ProcessAudioJob failed: ' . $e->getMessage());
+            // job.error is returned to the user by /api/status: never let a
+            // provider message carry an API key there or into the log.
+            $message = $this->redactor->redact($e->getMessage());
+            $this->logger->error('Audiolog ProcessAudioJob failed: ' . $message);
             $job->setStatus('failed');
-            $job->setError(mb_substr($e->getMessage(), 0, 4000));
+            $job->setError(mb_substr($message, 0, 4000));
             $job->setFinishedAt($this->time->getTime());
             $this->jobMapper->update($job);
         }

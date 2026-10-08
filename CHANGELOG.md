@@ -3,6 +3,11 @@
 All notable changes to Audiolog are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 1.0.5 - Unreleased
+
+### Security
+- Google API keys (Gemini and Cloud Speech-to-Text) are now sent in the `x-goog-api-key` header instead of the `?key=` query string. Before, a provider error (for example a 400 from Gemini) put the full URL, key included, in the exception message, which reached `nextcloud.log` and, for background jobs, the `error` field returned by `/api/status` to the user. Provider error messages are now masked before they reach the log, the job record or the HTTP response. **As a precaution, rotate the Gemini and Google STT API keys** configured in Audiolog, since they may already be in old log files.
+
 ## 1.0.4 - 2026-10-08
 
 ### Changed

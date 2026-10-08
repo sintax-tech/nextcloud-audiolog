@@ -6,6 +6,7 @@ namespace OCA\Audiolog\Service;
 use OCA\Audiolog\AppInfo\Application;
 use OCA\Audiolog\Db\Job;
 use OCA\Audiolog\Db\JobMapper;
+use OCA\Audiolog\Exception\ProviderException;
 use OCP\App\IAppManager;
 use OCP\Http\Client\IClientService;
 use OCP\Files\IRootFolder;
@@ -27,17 +28,35 @@ class AudioService {
         private CryptoHelper $crypto,
         private JobMapper $jobMapper,
         private IAppManager $appManager,
-        private IDBConnection $db
+        private IDBConnection $db,
+        private SecretRedactor $redactor
     ) {
     }
 
     /**
-     * Hand the controller an HTTP client built on Nextcloud's IClientService
-     * so the STT proxy endpoint can use the same connection pool / proxy
-     * settings the rest of the service does.
+     * Live-transcription proxy: forward one LINEAR16 chunk to Google Cloud
+     * Speech-to-Text with the server-side key (dedicated STT key first, the
+     * main key as fallback). The key never reaches the browser.
+     *
+     * @param array<string,mixed> $recognitionConfig already sanitized by the controller
+     * @return array<string,mixed> Google's JSON response
      */
-    public function getHttpClient(): \OCP\Http\Client\IClient {
-        return $this->clientService->newClient();
+    public function recognizeSpeechChunk(array $recognitionConfig, string $audioB64): array {
+        $sttKey = $this->crypto->decrypt($this->config->getAppValue($this->appName, 'google_stt_api_key', ''));
+        $apiKey = $sttKey !== '' ? $sttKey : $this->getApiKey();
+        if ($apiKey === '') {
+            throw new \RuntimeException('Sem chave de API configurada para STT.');
+        }
+        $resp = $this->providerRequest('POST', 'https://speech.googleapis.com/v1p1beta1/speech:recognize', [
+            'json' => ['config' => $recognitionConfig, 'audio' => ['content' => $audioB64]],
+            'headers' => $this->googleHeaders($apiKey, ['Content-Type' => 'application/json']),
+            'timeout' => 30,
+        ]);
+        $data = json_decode((string)$resp->getBody(), true);
+        if (!is_array($data)) {
+            throw new ProviderException('Resposta inválida do STT');
+        }
+        return $data;
     }
 
     /**
@@ -123,10 +142,36 @@ class AudioService {
     }
 
     /**
-     * Mask API key in URLs for logging (replace ?key=... with ?key=***).
+     * Headers for Google APIs (Gemini and Cloud Speech). The key goes in
+     * `x-goog-api-key`, never in the URL: a `?key=` query string ends up in
+     * Guzzle exception messages, and from there in logs and job.error.
      */
-    private function maskUrl(string $url): string {
-        return preg_replace('/([?&]key=)[^&]+/', '$1***', $url) ?? $url;
+    private function googleHeaders(string $apiKey, array $extra = []): array {
+        return array_merge(['x-goog-api-key' => $apiKey], $extra);
+    }
+
+    /**
+     * Single choke point for outbound provider HTTP calls. Any failure is
+     * rethrown as ProviderException with a redacted message and without the
+     * original exception chained (its message may hold the key).
+     */
+    private function providerRequest(string $method, string $url, array $options): \OCP\Http\Client\IResponse {
+        $client = $this->clientService->newClient();
+        try {
+            return match ($method) {
+                'GET' => $client->get($url, $options),
+                'DELETE' => $client->delete($url, $options),
+                default => $client->post($url, $options),
+            };
+        } catch (\Throwable $e) {
+            throw new ProviderException($this->redactor->redact($e->getMessage()));
+        }
+    }
+
+    /** Error reported inside a provider's JSON body, redacted. */
+    private function providerError(string $prefix, mixed $error): ProviderException {
+        $detail = is_array($error) ? ($error['message'] ?? json_encode($error)) : (string)$error;
+        return new ProviderException($this->redactor->redact($prefix . ': ' . $detail));
     }
 
     /**
@@ -273,12 +318,11 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * Only safe for small files (~<20MB total request body).
      */
     private function processWithGeminiInline(string $audioContent, string $mimeType, string $prompt): string {
-        $client = $this->clientService->newClient();
         $apiKey = $this->getApiKey();
         $model = $this->getModel();
         $baseUrl = rtrim($this->getBaseUrl(), '/');
 
-        $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent?key={$apiKey}";
+        $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent";
 
         $audioBase64 = base64_encode($audioContent);
 
@@ -302,16 +346,16 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             ]
         ];
 
-        $response = $client->post($apiUrl, [
+        $response = $this->providerRequest('POST', $apiUrl, [
             'json' => $requestBody,
-            'headers' => ['Content-Type' => 'application/json'],
+            'headers' => $this->googleHeaders($apiKey, ['Content-Type' => 'application/json']),
             'timeout' => 600
         ]);
 
         $result = json_decode($response->getBody(), true);
 
         if (isset($result['error'])) {
-            throw new \RuntimeException('Erro Gemini: ' . ($result['error']['message'] ?? json_encode($result['error'])));
+            throw $this->providerError('Erro Gemini', $result['error']);
         }
 
         $text = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
@@ -331,7 +375,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         $baseUrl = rtrim($this->getBaseUrl(), '/');
         $size = strlen($audioContent);
 
-        $fileResource = $this->uploadGeminiFile($audioContent, $mimeType, $apiKey, $baseUrl);
+        $fileResource = $this->uploadGeminiFile($audioContent, $mimeType, $baseUrl);
         $fileName = $fileResource['name'] ?? null;
         $fileUri = $fileResource['uri'] ?? null;
 
@@ -340,10 +384,9 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         }
 
         try {
-            $this->waitForFileActive($fileName, $apiKey, $baseUrl);
+            $this->waitForFileActive($fileName, $baseUrl);
 
-            $client = $this->clientService->newClient();
-            $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent?key={$apiKey}";
+            $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent";
 
             $requestBody = [
                 'contents' => [
@@ -365,16 +408,16 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 ]
             ];
 
-            $response = $client->post($apiUrl, [
+            $response = $this->providerRequest('POST', $apiUrl, [
                 'json' => $requestBody,
-                'headers' => ['Content-Type' => 'application/json'],
+                'headers' => $this->googleHeaders($apiKey, ['Content-Type' => 'application/json']),
                 'timeout' => 900
             ]);
 
             $result = json_decode($response->getBody(), true);
 
             if (isset($result['error'])) {
-                throw new \RuntimeException('Erro Gemini (Files API): ' . ($result['error']['message'] ?? json_encode($result['error'])));
+                throw $this->providerError('Erro Gemini (Files API)', $result['error']);
             }
 
             $text = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
@@ -383,7 +426,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         } finally {
             // Best-effort cleanup; do not let a delete failure mask the real result.
             try {
-                $this->deleteGeminiFile($fileName, $apiKey, $baseUrl);
+                $this->deleteGeminiFile($fileName, $baseUrl);
             } catch (\Throwable $cleanupErr) {
                 $this->logger->warning('Audiolog: file cleanup failed for ' . $fileName . ': ' . $cleanupErr->getMessage());
             }
@@ -395,20 +438,19 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * Two-step: start (returns upload URL via X-Goog-Upload-URL header) then upload+finalize.
      * Returns the file resource with name and uri.
      */
-    private function uploadGeminiFile(string $content, string $mimeType, string $apiKey, string $baseUrl): array {
-        $client = $this->clientService->newClient();
+    private function uploadGeminiFile(string $content, string $mimeType, string $baseUrl): array {
         $size = strlen($content);
 
         // Step 1: start
-        $startUrl = "{$baseUrl}/upload/v1beta/files?key={$apiKey}";
-        $startResponse = $client->post($startUrl, [
-            'headers' => [
+        $startUrl = "{$baseUrl}/upload/v1beta/files";
+        $startResponse = $this->providerRequest('POST', $startUrl, [
+            'headers' => $this->googleHeaders($this->getApiKey(), [
                 'X-Goog-Upload-Protocol' => 'resumable',
                 'X-Goog-Upload-Command' => 'start',
                 'X-Goog-Upload-Header-Content-Length' => (string)$size,
                 'X-Goog-Upload-Header-Content-Type' => $mimeType,
                 'Content-Type' => 'application/json',
-            ],
+            ]),
             'body' => json_encode(['file' => ['display_name' => 'assistaudio_' . uniqid('', true)]]),
             'timeout' => 60
         ]);
@@ -427,7 +469,8 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         }
 
         // Step 2: upload bytes and finalize
-        $uploadResponse = $client->post($uploadUrl, [
+        // The upload URL returned by Google is already bound to this session.
+        $uploadResponse = $this->providerRequest('POST', $uploadUrl, [
             'headers' => [
                 'Content-Length' => (string)$size,
                 'X-Goog-Upload-Offset' => '0',
@@ -439,7 +482,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
         $result = json_decode($uploadResponse->getBody(), true);
         if (!is_array($result) || empty($result['file'])) {
-            $this->logger->error('Audiolog: Files API upload returned unexpected payload: ' . substr((string)$uploadResponse->getBody(), 0, 500));
+            $this->logger->error('Audiolog: Files API upload returned unexpected payload: ' . $this->redactor->redact(substr((string)$uploadResponse->getBody(), 0, 500)));
             throw new \RuntimeException('Files API: resposta inesperada no upload');
         }
 
@@ -450,13 +493,13 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * Poll the Files API until the file reaches ACTIVE state. Times out after
      * ~60s of polling. Audio files typically transition in <5s.
      */
-    private function waitForFileActive(string $fileName, string $apiKey, string $baseUrl): void {
-        $client = $this->clientService->newClient();
-        $statusUrl = "{$baseUrl}/v1beta/{$fileName}?key={$apiKey}";
+    private function waitForFileActive(string $fileName, string $baseUrl): void {
+        $statusUrl = "{$baseUrl}/v1beta/{$fileName}";
+        $headers = $this->googleHeaders($this->getApiKey());
         $deadline = time() + 60;
 
         while (time() < $deadline) {
-            $response = $client->get($statusUrl, ['timeout' => 10]);
+            $response = $this->providerRequest('GET', $statusUrl, ['headers' => $headers, 'timeout' => 10]);
             $info = json_decode($response->getBody(), true);
             $state = $info['state'] ?? 'PROCESSING';
 
@@ -473,17 +516,15 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         throw new \RuntimeException('Files API: timeout aguardando arquivo ficar ACTIVE');
     }
 
-    private function deleteGeminiFile(string $fileName, string $apiKey, string $baseUrl): void {
-        $client = $this->clientService->newClient();
-        $deleteUrl = "{$baseUrl}/v1beta/{$fileName}?key={$apiKey}";
-        $client->delete($deleteUrl, ['timeout' => 30]);
+    private function deleteGeminiFile(string $fileName, string $baseUrl): void {
+        $deleteUrl = "{$baseUrl}/v1beta/{$fileName}";
+        $this->providerRequest('DELETE', $deleteUrl, ['headers' => $this->googleHeaders($this->getApiKey()), 'timeout' => 30]);
     }
 
     /**
      * Process audio with Whisper API (Ollama/OpenAI)
      */
     private function processWithWhisper(string $audioContent, string $filename, string $mimeType, string $prompt): string {
-        $client = $this->clientService->newClient();
         $provider = $this->getProvider();
         $apiKey = $this->getApiKey();
         $model = $this->getModel();
@@ -540,12 +581,12 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $requestOptions['headers'] = ['Authorization' => 'Bearer ' . $apiKey];
         }
 
-        $response = $client->post($apiUrl, $requestOptions);
+        $response = $this->providerRequest('POST', $apiUrl, $requestOptions);
         $responseBody = $response->getBody();
         $result = json_decode($responseBody, true);
 
         if (isset($result['error'])) {
-            throw new \RuntimeException('Erro API: ' . ($result['error']['message'] ?? json_encode($result['error'])));
+            throw $this->providerError('Erro API', $result['error']);
         }
 
         return $result['text'] ?? '';
@@ -560,7 +601,6 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * Gemini round-trip.
      */
     private function processWithChatCompletion(string $transcript, string $prompt): string {
-        $client = $this->clientService->newClient();
         $provider = $this->getProvider();
         $apiKey = $this->getApiKey();
         $baseUrl = rtrim($this->getBaseUrl(), '/');
@@ -597,10 +637,10 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         if (!empty($apiKey)) {
             $opts['headers'] = ['Authorization' => 'Bearer ' . $apiKey];
         }
-        $response = $client->post($apiUrl, $opts);
+        $response = $this->providerRequest('POST', $apiUrl, $opts);
         $resp = json_decode($response->getBody(), true);
         if (isset($resp['error'])) {
-            throw new \RuntimeException('Erro API: ' . ($resp['error']['message'] ?? json_encode($resp['error'])));
+            throw $this->providerError('Erro API', $resp['error']);
         }
         return $resp['choices'][0]['message']['content'] ?? '';
     }
@@ -680,7 +720,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         if (empty($apiKey)) {
             throw new \RuntimeException('API key não configurada');
         }
-        $client = $this->clientService->newClient();
+        $headers = $this->googleHeaders($apiKey, ['Content-Type' => 'application/json']);
 
         $language = $this->getLanguage();
         $languageCode = match ($language) {
@@ -720,27 +760,27 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
         if ($useSync) {
             try {
-                $url = "https://speech.googleapis.com/v1p1beta1/speech:recognize?key={$apiKey}";
-                $resp = $client->post($url, [
+                $url = 'https://speech.googleapis.com/v1p1beta1/speech:recognize';
+                $resp = $this->providerRequest('POST', $url, [
                     'json' => $body,
-                    'headers' => ['Content-Type' => 'application/json'],
+                    'headers' => $headers,
                     'timeout' => 120,
                 ]);
                 $data = json_decode($resp->getBody(), true) ?: [];
                 if (!isset($data['error'])) {
                     return $this->formatGoogleSttResults($data);
                 }
-                $this->logger->warning('AudioLog: Google STT sync failed, falling back to longrunning: ' . json_encode($data['error']));
+                $this->logger->warning('AudioLog: Google STT sync failed, falling back to longrunning: ' . $this->redactor->redact((string)json_encode($data['error'])));
             } catch (\Throwable $e) {
                 $this->logger->warning('AudioLog: Google STT sync threw, falling back to longrunning: ' . $e->getMessage());
             }
         }
 
         // Long-running: enqueue, then poll the operation until done.
-        $startUrl = "https://speech.googleapis.com/v1p1beta1/speech:longrunningrecognize?key={$apiKey}";
-        $startResp = $client->post($startUrl, [
+        $startUrl = 'https://speech.googleapis.com/v1p1beta1/speech:longrunningrecognize';
+        $startResp = $this->providerRequest('POST', $startUrl, [
             'json' => $body,
-            'headers' => ['Content-Type' => 'application/json'],
+            'headers' => $headers,
             'timeout' => 120,
         ]);
         $startData = json_decode($startResp->getBody(), true) ?: [];
@@ -752,11 +792,11 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         $deadline = time() + (30 * 60); // 30min hard cap
         while (time() < $deadline) {
             sleep(5);
-            $statusUrl = "https://speech.googleapis.com/v1/operations/" . urlencode($opName) . "?key={$apiKey}";
-            $statusResp = $client->get($statusUrl, ['timeout' => 30]);
+            $statusUrl = 'https://speech.googleapis.com/v1/operations/' . urlencode($opName);
+            $statusResp = $this->providerRequest('GET', $statusUrl, ['headers' => $headers, 'timeout' => 30]);
             $status = json_decode($statusResp->getBody(), true) ?: [];
             if (isset($status['error'])) {
-                throw new \RuntimeException('Google STT erro: ' . ($status['error']['message'] ?? json_encode($status['error'])));
+                throw $this->providerError('Google STT erro', $status['error']);
             }
             if (!empty($status['done'])) {
                 if (isset($status['response'])) {
@@ -1066,11 +1106,10 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * the audio.
      */
     private function processGeminiTextOnly(string $text, string $prompt): string {
-        $client = $this->clientService->newClient();
         $apiKey = $this->getApiKey();
         $model = $this->getModel();
         $baseUrl = rtrim($this->getBaseUrl(), '/');
-        $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent?key={$apiKey}";
+        $apiUrl = "{$baseUrl}/v1beta/models/{$model}:generateContent";
 
         $body = [
             'contents' => [[
@@ -1083,14 +1122,14 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 'maxOutputTokens' => 65536,
             ],
         ];
-        $response = $client->post($apiUrl, [
+        $response = $this->providerRequest('POST', $apiUrl, [
             'json' => $body,
-            'headers' => ['Content-Type' => 'application/json'],
+            'headers' => $this->googleHeaders($apiKey, ['Content-Type' => 'application/json']),
             'timeout' => 600,
         ]);
         $result = json_decode($response->getBody(), true);
         if (isset($result['error'])) {
-            throw new \RuntimeException('Erro Gemini (text-only): ' . ($result['error']['message'] ?? 'desconhecido'));
+            throw $this->providerError('Erro Gemini (text-only)', $result['error']);
         }
         $out = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
         return $this->sanitizeResponse($out);

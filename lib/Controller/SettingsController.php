@@ -259,7 +259,7 @@ class SettingsController extends Controller {
             $testUrl = match($provider) {
                 'ollama' => rtrim($url, '/') . '/api/tags',
                 'openai' => 'https://api.openai.com/v1/models',
-                'gemini' => 'https://generativelanguage.googleapis.com/v1/models?key=' . $apiKey,
+                'gemini' => 'https://generativelanguage.googleapis.com/v1/models',
                 default => $url
             };
 
@@ -268,9 +268,11 @@ class SettingsController extends Controller {
             curl_setopt($ch, CURLOPT_TIMEOUT, 10);
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
 
-            if (!empty($apiKey) && $provider !== 'gemini') {
+            if (!empty($apiKey)) {
+                // Keys travel in headers, never in the URL.
                 $headers = match($provider) {
                     'openai' => ['Authorization: Bearer ' . $apiKey],
+                    'gemini' => ['x-goog-api-key: ' . $apiKey],
                     default => []
                 };
                 if (!empty($headers)) {

@@ -10,6 +10,7 @@ use OCA\Audiolog\Db\JobMapper;
 use OCA\Audiolog\Service\AudioService;
 use OCA\Audiolog\Service\CryptoHelper;
 use OCA\Audiolog\Service\PermissionService;
+use OCA\Audiolog\Service\SecretRedactor;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
@@ -32,7 +33,8 @@ class ApiController extends Controller {
         private IJobList $jobList,
         private PermissionService $permissions,
         private IGroupManager $groupManager,
-        private IConfig $config
+        private IConfig $config,
+        private SecretRedactor $redactor
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -70,7 +72,11 @@ class ApiController extends Controller {
      * endpoint blew up.
      */
     private function errorResponse(\Throwable $e, string $context): JSONResponse {
-        $this->logger->error('Audiolog ' . $context . ': ' . $e->getMessage(), ['exception' => $e]);
+        $message = $this->redactor->redact($e->getMessage());
+        // Hand the logger the original exception (stack trace) only when its
+        // message carries nothing to mask; otherwise log the redacted text.
+        $logContext = $message === $e->getMessage() ? ['exception' => $e] : [];
+        $this->logger->error('Audiolog ' . $context . ': ' . $message, $logContext);
         return new JSONResponse(
             ['error' => 'Erro interno ao processar sua solicitação. Verifique os logs do servidor para detalhes.'],
             Http::STATUS_INTERNAL_SERVER_ERROR
@@ -627,12 +633,11 @@ class ApiController extends Controller {
                 return new JSONResponse(['error' => 'Transcrição ao vivo desabilitada.'], Http::STATUS_FORBIDDEN);
             }
 
-            // Prefer the dedicated Google STT key when present (works around
-            // Google's restriction that blocks a Gemini-only key from STT).
+            // Some key must be configured; the proxy call itself reads it
+            // server-side (dedicated STT key first, main key as fallback).
             $sttKey = $this->crypto->decrypt($config->getAppValue($appName, 'google_stt_api_key', ''));
             $apiKey = $this->crypto->decrypt($config->getAppValue($appName, 'api_key', ''));
-            $effectiveKey = $sttKey !== '' ? $sttKey : $apiKey;
-            if (empty($effectiveKey)) {
+            if ($sttKey === '' && $apiKey === '') {
                 return new JSONResponse(['error' => 'Sem chave de API configurada para STT.'], Http::STATUS_FAILED_DEPENDENCY);
             }
 
@@ -661,17 +666,7 @@ class ApiController extends Controller {
                 'model' => (string)($cfg['model'] ?? 'latest_long'),
             ];
 
-            $client = $this->audioService->getHttpClient();
-            $url = 'https://speech.googleapis.com/v1p1beta1/speech:recognize?key=' . urlencode($effectiveKey);
-            $resp = $client->post($url, [
-                'json' => ['config' => $allowedCfg, 'audio' => ['content' => $audioB64]],
-                'timeout' => 30,
-            ]);
-            $body = $resp->getBody();
-            $data = json_decode($body, true);
-            if (!is_array($data)) {
-                return new JSONResponse(['error' => 'Resposta inválida do STT'], Http::STATUS_BAD_GATEWAY);
-            }
+            $data = $this->audioService->recognizeSpeechChunk($allowedCfg, $audioB64);
             return new JSONResponse($data);
         } catch (\Throwable $e) {
             return $this->errorResponse($e, __FUNCTION__);
