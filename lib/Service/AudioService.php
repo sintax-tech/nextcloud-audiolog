@@ -7,12 +7,10 @@ use OCA\Audiolog\AppInfo\Application;
 use OCA\Audiolog\Db\Job;
 use OCA\Audiolog\Db\JobMapper;
 use OCA\Audiolog\Exception\ProviderException;
-use OCP\App\IAppManager;
 use OCP\Http\Client\IClientService;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCP\IConfig;
-use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 
 // (CryptoHelper is in the same namespace, no use needed)
@@ -27,8 +25,6 @@ class AudioService {
         private IConfig $config,
         private CryptoHelper $crypto,
         private JobMapper $jobMapper,
-        private IAppManager $appManager,
-        private IDBConnection $db,
         private SecretRedactor $redactor
     ) {
     }
@@ -2341,181 +2337,11 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         return htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
     }
 
-    public function getDeckBoards(string $userId): array {
-        try {
-            $this->logger->info("getDeckBoards: Starting for user {$userId}");
-
-            // Check if Deck app is available
-            if (!$this->appManager->isInstalled('deck')) {
-                $this->logger->warning("getDeckBoards: Deck not enabled for user {$userId}");
-                return ['boards' => [], 'error' => 'Deck não está instalado ou habilitado'];
-            }
-
-            $this->logger->info("getDeckBoards: Deck is enabled, querying database");
-            $db = $this->db;
-            $boards = [];
-
-            // First get boards where user is owner
-            $qb = $db->getQueryBuilder();
-            $qb->select('id', 'title')
-                ->from('deck_boards')
-                ->where($qb->expr()->eq('owner', $qb->createNamedParameter($userId)))
-                ->andWhere($qb->expr()->eq('deleted_at', $qb->createNamedParameter(0)))
-                ->orderBy('title', 'ASC');
-
-            $this->logger->info("getDeckBoards: Executing owner query");
-            $result = $qb->executeQuery();
-
-            while ($row = $result->fetch()) {
-                $this->logger->info("getDeckBoards: Found owner board: {$row['title']} (id: {$row['id']})");
-
-                // Get stacks for this board
-                $stackQb = $db->getQueryBuilder();
-                $stackQb->select('id', 'title')
-                        ->from('deck_stacks')
-                        ->where($stackQb->expr()->eq('board_id', $stackQb->createNamedParameter($row['id'])))
-                        ->andWhere($stackQb->expr()->eq('deleted_at', $stackQb->createNamedParameter(0)))
-                        ->orderBy('order', 'ASC');
-
-                $stackResult = $stackQb->executeQuery();
-                $stacks = [];
-                while ($stackRow = $stackResult->fetch()) {
-                    $stacks[] = [
-                        'id' => (int)$stackRow['id'],
-                        'title' => $stackRow['title']
-                    ];
-                }
-                $stackResult->closeCursor();
-
-                $boards[] = [
-                    'id' => (int)$row['id'],
-                    'title' => $row['title'],
-                    'stacks' => $stacks
-                ];
-            }
-            $result->closeCursor();
-
-            // Also get boards shared with user via ACL
-            $existingIds = array_column($boards, 'id');
-
-            $qb2 = $db->getQueryBuilder();
-            $qb2->select('b.id', 'b.title')
-               ->from('deck_boards', 'b')
-               ->innerJoin('b', 'deck_board_acl', 'acl', 'b.id = acl.board_id')
-               ->where($qb2->expr()->eq('acl.participant', $qb2->createNamedParameter($userId)))
-               ->andWhere($qb2->expr()->eq('acl.type', $qb2->createNamedParameter(0)))
-               ->andWhere($qb2->expr()->eq('b.deleted_at', $qb2->createNamedParameter(0)))
-               ->orderBy('b.title', 'ASC');
-
-            $this->logger->info("getDeckBoards: Executing ACL query");
-            $result2 = $qb2->executeQuery();
-
-            while ($row = $result2->fetch()) {
-                if (!in_array((int)$row['id'], $existingIds)) {
-                    $this->logger->info("getDeckBoards: Found shared board: {$row['title']} (id: {$row['id']})");
-
-                    // Get stacks
-                    $stackQb = $db->getQueryBuilder();
-                    $stackQb->select('id', 'title')
-                            ->from('deck_stacks')
-                            ->where($stackQb->expr()->eq('board_id', $stackQb->createNamedParameter($row['id'])))
-                            ->andWhere($stackQb->expr()->eq('deleted_at', $stackQb->createNamedParameter(0)))
-                            ->orderBy('order', 'ASC');
-
-                    $stackResult = $stackQb->executeQuery();
-                    $stacks = [];
-                    while ($stackRow = $stackResult->fetch()) {
-                        $stacks[] = [
-                            'id' => (int)$stackRow['id'],
-                            'title' => $stackRow['title']
-                        ];
-                    }
-                    $stackResult->closeCursor();
-
-                    $boards[] = [
-                        'id' => (int)$row['id'],
-                        'title' => $row['title'],
-                        'stacks' => $stacks
-                    ];
-                }
-            }
-            $result2->closeCursor();
-
-            $this->logger->info("getDeckBoards: Total boards found: " . count($boards));
-            return ['boards' => $boards];
-
-        } catch (\Exception $e) {
-            $this->logger->error("getDeckBoards: Error - " . $e->getMessage() . " | Trace: " . $e->getTraceAsString());
-            return ['boards' => [], 'error' => $e->getMessage()];
-        }
-    }
-
-    public function createDeckCards(string $userId, array $tasks, ?int $boardId, ?int $stackId): array {
-        try {
-            // If no boardId provided, save to file instead
-            if (!$boardId || !$stackId) {
-                return $this->saveTasksToFile($userId, $tasks);
-            }
-
-            // Create cards in Deck
-            $db = $this->db;
-            $createdCards = 0;
-
-            foreach ($tasks as $task) {
-                $title = $task['title'] ?? '';
-                if (empty($title)) continue;
-
-                $description = '';
-                if (!empty($task['assignee'])) {
-                    $description .= "Responsável: " . $task['assignee'] . "\n";
-                }
-                if (!empty($task['dueDate'])) {
-                    $description .= "Prazo: " . $task['dueDate'];
-                }
-
-                // Get max order for this stack
-                $qb = $db->getQueryBuilder();
-                $qb->select($qb->func()->max('order'))
-                   ->from('deck_cards')
-                   ->where($qb->expr()->eq('stack_id', $qb->createNamedParameter($stackId)));
-                $result = $qb->executeQuery();
-                $maxOrder = (int)$result->fetchOne() + 1;
-                $result->closeCursor();
-
-                // Insert card
-                $qb = $db->getQueryBuilder();
-                $qb->insert('deck_cards')
-                   ->values([
-                       'title' => $qb->createNamedParameter($title),
-                       'description' => $qb->createNamedParameter($description),
-                       'stack_id' => $qb->createNamedParameter($stackId),
-                       'type' => $qb->createNamedParameter('plain'),
-                       'last_modified' => $qb->createNamedParameter(time()),
-                       'created_at' => $qb->createNamedParameter(time()),
-                       'owner' => $qb->createNamedParameter($userId),
-                       'order' => $qb->createNamedParameter($maxOrder),
-                       'archived' => $qb->createNamedParameter(0),
-                       'deleted_at' => $qb->createNamedParameter(0),
-                       'done' => $qb->createNamedParameter(null),
-                   ]);
-                $qb->executeStatement();
-                $createdCards++;
-            }
-
-            return [
-                'success' => true,
-                'count' => $createdCards,
-                'message' => $createdCards . ' tarefas criadas no Deck'
-            ];
-
-        } catch (\Exception $e) {
-            $this->logger->error("Erro ao criar cards no Deck: " . $e->getMessage());
-            // Fallback to file
-            return $this->saveTasksToFile($userId, $tasks);
-        }
-    }
-
-    private function saveTasksToFile(string $userId, array $tasks): array {
+    /**
+     * Export tasks to a Markdown table under Audiolog/ (used when the user
+     * picks no Deck board).
+     */
+    public function saveTasksToFile(string $userId, array $tasks): array {
         $userFolder = $this->rootFolder->getUserFolder($userId);
 
         try {

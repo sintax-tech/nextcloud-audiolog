@@ -7,8 +7,11 @@ use OCA\Audiolog\AppInfo\Application;
 use OCA\Audiolog\BackgroundJob\ProcessAudioJob;
 use OCA\Audiolog\Db\Job;
 use OCA\Audiolog\Db\JobMapper;
+use OCA\Audiolog\Exception\DeckPermissionException;
+use OCA\Audiolog\Exception\DeckUnavailableException;
 use OCA\Audiolog\Service\AudioService;
 use OCA\Audiolog\Service\CryptoHelper;
+use OCA\Audiolog\Service\DeckIntegration;
 use OCA\Audiolog\Service\PermissionService;
 use OCA\Audiolog\Service\SecretRedactor;
 use OCP\AppFramework\Controller;
@@ -34,7 +37,8 @@ class ApiController extends Controller {
         private PermissionService $permissions,
         private IGroupManager $groupManager,
         private IConfig $config,
-        private SecretRedactor $redactor
+        private SecretRedactor $redactor,
+        private DeckIntegration $deck
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -370,13 +374,13 @@ class ApiController extends Controller {
             if ($check instanceof JSONResponse) { return $check; }
             $userId = $check;
 
-            $this->logger->info("AssistAudio getDeckBoards: fetching boards for user {$userId}");
-            $result = $this->audioService->getDeckBoards($userId);
-            $this->logger->info("AssistAudio getDeckBoards: found " . count($result['boards'] ?? []) . " boards");
-            return new JSONResponse($result);
-
-        } catch (\Exception $e) {
-            $this->logger->error("AssistAudio getDeckBoards error: " . $e->getMessage());
+            if (!$this->deck->isAvailable()) {
+                return new JSONResponse(['boards' => [], 'error' => 'Deck não está instalado ou habilitado']);
+            }
+            return new JSONResponse(['boards' => $this->deck->listBoards($userId)]);
+        } catch (DeckUnavailableException $e) {
+            return new JSONResponse(['boards' => [], 'error' => 'Deck não está instalado ou habilitado']);
+        } catch (\Throwable $e) {
             return $this->errorResponse($e, __FUNCTION__);
         }
     }
@@ -392,20 +396,31 @@ class ApiController extends Controller {
             $boardId = $this->request->getParam('boardId');
             $stackId = $this->request->getParam('stackId');
 
-            $this->logger->info("AssistAudio createDeckCards: boardId={$boardId}, stackId={$stackId}, tasks=" . count($tasks));
-
-            if (empty($tasks)) {
+            if (!is_array($tasks) || empty($tasks)) {
                 return new JSONResponse(['error' => 'Nenhuma tarefa fornecida'], Http::STATUS_BAD_REQUEST);
             }
 
-            // Convert to integers if provided
-            $boardIdInt = $boardId !== null && $boardId !== '' ? (int)$boardId : null;
-            $stackIdInt = $stackId !== null && $stackId !== '' ? (int)$stackId : null;
+            $boardIdInt = $boardId !== null && $boardId !== '' ? (int)$boardId : 0;
+            $stackIdInt = $stackId !== null && $stackId !== '' ? (int)$stackId : 0;
 
-            $result = $this->audioService->createDeckCards($userId, $tasks, $boardIdInt, $stackIdInt);
-            return new JSONResponse($result);
+            // No board picked: export the tasks to a Markdown file instead.
+            if ($boardIdInt <= 0 || $stackIdInt <= 0) {
+                return new JSONResponse($this->audioService->saveTasksToFile($userId, $tasks));
+            }
 
-        } catch (\Exception $e) {
+            // Deck's own services enforce its ACL; DeckIntegration also checks
+            // that the stack belongs to the board and that the user may edit it.
+            $count = $this->deck->createCards($userId, $tasks, $boardIdInt, $stackIdInt);
+            return new JSONResponse([
+                'success' => true,
+                'count' => $count,
+                'message' => $count . ' tarefas criadas no Deck',
+            ]);
+        } catch (DeckPermissionException $e) {
+            return new JSONResponse(['error' => 'Sem permissão para criar cartões neste quadro do Deck.'], Http::STATUS_FORBIDDEN);
+        } catch (DeckUnavailableException $e) {
+            return new JSONResponse(['error' => 'Deck não está instalado ou habilitado.'], Http::STATUS_FAILED_DEPENDENCY);
+        } catch (\Throwable $e) {
             return $this->errorResponse($e, __FUNCTION__);
         }
     }

@@ -43,8 +43,6 @@ class AudioServiceProviderErrorTest extends TestCase {
             $config,
             $crypto,
             $this->createMock(JobMapper::class),
-            $this->createMock(\OCP\App\IAppManager::class),
-            $this->createMock(\OCP\IDBConnection::class),
             new SecretRedactor($config, $crypto),
         );
     }
