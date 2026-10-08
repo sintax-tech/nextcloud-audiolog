@@ -3,6 +3,15 @@
 All notable changes to Audiolog are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 1.0.4 - 2026-10-08
+
+### Changed
+- The store description no longer lists Gemini Live as a live transcription option. The live options are the browser's Web Speech API and Google Cloud Speech-to-Text; `gemini-live` is a legacy value that falls back to Web Speech.
+- `<summary>` and `<description>` in `appinfo/info.xml` now come in English (default), Portuguese (`pt-br`) and Spanish (`es`), with the same content in the three.
+
+### Fixed
+- `appinfo/info.xml` elements are in the order the app store XSD expects (`<settings>` before `<navigations>`), so `xmllint` against `https://apps.nextcloud.com/schema/apps/info.xsd` passes.
+
 ## 1.0.3 - 2026-10-08
 
 ### Added

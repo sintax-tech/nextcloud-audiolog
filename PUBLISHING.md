@@ -10,7 +10,7 @@ https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/dist/audio
 
 Replace `X.Y.Z` with the new version.
 
-1. **Bump the version** in `appinfo/info.xml` (`<version>X.Y.Z</version>`). If the supported Nextcloud range changes, update `<nextcloud min-version=... max-version=...>` and the range in `README.md` as well. Add an entry to `CHANGELOG.md`.
+1. **Bump the version** in `appinfo/info.xml` (`<version>X.Y.Z</version>`) and validate it against the XSD (see below). When the store text changes, update all three languages together. If the supported Nextcloud range changes, update `<nextcloud min-version=... max-version=...>` and the range in `README.md` as well. Add an entry to `CHANGELOG.md`.
 2. **Build the tarball:**
    ```bash
    make build
@@ -73,9 +73,16 @@ Replace `X.Y.Z` with the new version.
 
 Without `COPYFILE_DISABLE=1`, the macOS `tar` adds AppleDouble files (`._*`) to the tarball. They broke the Nextcloud updater, which tried to handle `apps/._audiolog` as an app directory. This was fixed in 1.0.2 and is why the Makefile sets `COPYFILE_DISABLE=1` and `--exclude='._*'`. Always run the tarball check in step 3.
 
-## Known caveat: `info.xml` and the XSD
+## Validating `info.xml` against the XSD
 
-Validating `appinfo/info.xml` with `xmllint --noout --schema https://apps.nextcloud.com/schema/apps/info.xsd appinfo/info.xml` fails because the `<settings>` element comes after `<navigations>`, which is not the order the XSD expects. The app store accepts the file anyway (1.0.2 and 1.0.3 were accepted). Reordering it is pending.
+Before building, check the file against the store schema:
+
+```bash
+curl -sL https://apps.nextcloud.com/schema/apps/info.xsd -o /private/tmp/info.xsd
+xmllint --noout --schema /private/tmp/info.xsd appinfo/info.xml
+```
+
+It must print `validates`. The XSD fixes the element order (for example `<settings>` before `<navigations>`), and this has been respected since 1.0.4. `<summary>` and `<description>` are kept in English (no `lang`, the default), `lang="pt-br"` and `lang="es"`, with the same content; the XSD accepts the lowercase code `pt-br`, not `pt_BR`. `<name>` stays single, without `lang`. If the download answers `429 Too Many Requests`, wait and try again.
 
 ## Screenshots
 
@@ -99,5 +106,5 @@ These steps were already done for the first release and are kept for reference.
 ## Troubleshooting
 
 - **"Certificate validation failed"**: the certificate does not match the signature. Rebuild everything (`make clean build sign`), check that you uploaded the file from the raw URL, and check the certificate path in the Makefile.
-- **"info.xml schema validation failed"**: see the XSD caveat above; compare against the previous accepted version.
+- **"info.xml schema validation failed"**: run the XSD check above; compare against the previous accepted version.
 - **"Tarball must contain exactly one directory"**: run `make clean` and rebuild, then run the tarball check (macOS `._*` files are the usual cause).

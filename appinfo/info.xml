@@ -3,7 +3,9 @@
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
     <id>audiolog</id>
     <name>Audiolog</name>
-    <summary>Grave, transcreva e processe áudios com IA — direto no Nextcloud.</summary>
+    <summary>Record, transcribe and process audio with AI, right inside Nextcloud.</summary>
+    <summary lang="pt-br">Grave, transcreva e processe áudios com IA — direto no Nextcloud.</summary>
+    <summary lang="es">Grabe, transcriba y procese audio con IA, directamente en Nextcloud.</summary>
     <description><![CDATA[
 **Audiolog** is a Nextcloud app to record, transcribe and process audio with AI models (Gemini, OpenAI/Whisper, Ollama).
 
@@ -11,7 +13,7 @@
 
 - **In-browser recording** with pause, resume and a real-time size/duration indicator
 - **Auto-recovery** if the tab closes or the network drops mid-recording (IndexedDB-backed)
-- **Live transcription** via the browser's Web Speech API (free), Gemini Live or Google Cloud Speech-to-Text
+- **Live transcription** via the browser's Web Speech API (free) or Google Cloud Speech-to-Text
 - **AI analysis**: summary, formal meeting minutes, agenda, task extraction
 - **Speaker diarization** in the post-stop refine pass with Gemini
 - **Multi-provider**: pick Gemini, OpenAI/Whisper, or Ollama (local) — no hidden cross-provider fallbacks
@@ -26,7 +28,51 @@
 - Live transcription with external API key restricted to admins by default (configurable)
 - Web Speech API runs entirely in the browser — no key ever leaves the server
     ]]></description>
-    <version>1.0.3</version>
+    <description lang="pt-br"><![CDATA[
+**Audiolog** é um app do Nextcloud para gravar, transcrever e processar áudio com modelos de IA (Gemini, OpenAI/Whisper, Ollama).
+
+## Recursos
+
+- **Gravação no navegador** com pausa, retomada e indicador de tamanho/duração em tempo real
+- **Recuperação automática** se a aba fechar ou a rede cair durante a gravação (com IndexedDB)
+- **Transcrição ao vivo** pela Web Speech API do navegador (gratuita) ou pelo Google Cloud Speech-to-Text
+- **Análise com IA**: resumo, ata formal de reunião, pauta, extração de tarefas
+- **Separação de falantes** na etapa de refinamento após a gravação, com Gemini
+- **Vários provedores**: escolha Gemini, OpenAI/Whisper ou Ollama (local) — sem fallbacks ocultos entre provedores
+- **Áudios grandes** (>20 MB) suportados pelo upload resumível da Files API do Gemini
+- **Integração com Files**: as gravações ficam em `Audiolog/`, com gestão completa pelo app Arquivos
+- **Exportação em Markdown ou DOCX** para edição no Office/Collabora
+
+## Privacidade
+
+- Chaves de API criptografadas em repouso via `OCP\Security\ICrypto`
+- Controle de acesso por grupo (configuração `Grupos Permitidos`)
+- Transcrição ao vivo com chave de API externa restrita a administradores por padrão (configurável)
+- A Web Speech API roda inteiramente no navegador — nenhuma chave sai do servidor
+    ]]></description>
+    <description lang="es"><![CDATA[
+**Audiolog** es una app de Nextcloud para grabar, transcribir y procesar audio con modelos de IA (Gemini, OpenAI/Whisper, Ollama).
+
+## Funciones
+
+- **Grabación en el navegador** con pausa, reanudación e indicador de tamaño y duración en tiempo real
+- **Recuperación automática** si la pestaña se cierra o la red se cae durante la grabación (con IndexedDB)
+- **Transcripción en vivo** con la Web Speech API del navegador (gratuita) o con Google Cloud Speech-to-Text
+- **Análisis con IA**: resumen, acta formal de reunión, agenda, extracción de tareas
+- **Separación de hablantes** en la etapa de refinamiento posterior a la grabación, con Gemini
+- **Varios proveedores**: elija Gemini, OpenAI/Whisper u Ollama (local), sin alternativas ocultas entre proveedores
+- **Audios grandes** (>20 MB) compatibles mediante la subida reanudable de la Files API de Gemini
+- **Integración con Files**: las grabaciones quedan en `Audiolog/`, con gestión completa desde la app Archivos
+- **Exportación a Markdown o DOCX** para editar en Office/Collabora
+
+## Privacidad
+
+- Claves de API cifradas en reposo mediante `OCP\Security\ICrypto`
+- Control de acceso por grupo (ajuste `Grupos permitidos`)
+- Transcripción en vivo con clave de API externa restringida a administradores por defecto (configurable)
+- La Web Speech API se ejecuta íntegramente en el navegador: ninguna clave sale del servidor
+    ]]></description>
+    <version>1.0.4</version>
     <licence>agpl</licence>
     <author mail="jhonatan@sintax.tech">Jhonatan Jaworski</author>
     <namespace>Audiolog</namespace>
@@ -45,6 +91,10 @@
         <php min-version="8.1"/>
         <nextcloud min-version="28" max-version="35"/>
     </dependencies>
+    <settings>
+        <admin>OCA\Audiolog\Settings\AdminSettings</admin>
+        <admin-section>OCA\Audiolog\Settings\AdminSection</admin-section>
+    </settings>
     <navigations>
         <navigation>
             <name>Audiolog</name>
@@ -53,8 +103,4 @@
             <order>11</order>
         </navigation>
     </navigations>
-    <settings>
-        <admin>OCA\Audiolog\Settings\AdminSettings</admin>
-        <admin-section>OCA\Audiolog\Settings\AdminSection</admin-section>
-    </settings>
 </info>
