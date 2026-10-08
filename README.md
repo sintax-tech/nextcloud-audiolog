@@ -42,7 +42,7 @@ The app deliberately keeps providers isolated: pick OpenAI and the app won't eve
 - API keys travel in request headers (`x-goog-api-key`, `Authorization`), never in URLs, and provider error messages are masked before they reach the log, the job status or the browser
 - **Deck export** goes through Deck's own services: a card is only created on a board the user can edit
 - No provider origin in the page CSP: the browser only talks to Audiolog's own endpoints
-- Uploads are checked against the admin's maximum size and must be audio or video by content; `ffmpeg` only reads local files (`-protocol_whitelist file,pipe`) and playlists are refused
+- Uploads are checked against the admin's maximum size and must be audio or video by content; `ffmpeg` only reads local files with media demuxers (`-protocol_whitelist file,pipe`, `-format_whitelist`), runs with a time limit, and playlists or manifests are refused
 - Path-traversal guard on every endpoint that accepts a user path
 - Web Speech API runs in the browser only, no key ever leaves the server
 - Generic error responses to clients; full stack traces stay in the server logs
@@ -172,7 +172,7 @@ Os provedores são isolados: se você escolher OpenAI, o app **não chama Google
 - **Chaves nos headers** (`x-goog-api-key`, `Authorization`), nunca na URL, e mensagens de erro dos provedores mascaradas antes de ir para o log, o status do job ou o navegador
 - **Exportação para o Deck** pelos serviços do próprio Deck: o cartão só é criado em quadro que o usuário pode editar
 - **CSP sem provedores**: o navegador só fala com os endpoints do próprio Audiolog
-- **Uploads** conferidos contra o tamanho máximo do admin e pelo conteúdo (áudio ou vídeo); o `ffmpeg` só lê arquivos locais (`-protocol_whitelist file,pipe`) e playlists são recusadas
+- **Uploads** conferidos contra o tamanho máximo do admin e pelo conteúdo (áudio ou vídeo); o `ffmpeg` só lê arquivos locais com demuxers de mídia (`-protocol_whitelist file,pipe`, `-format_whitelist`), roda com limite de tempo, e playlists ou manifestos são recusados
 - **Proteção contra path traversal** em todos os endpoints que aceitam caminhos do usuário
 - **Web Speech API** roda 100% no navegador, sem chave envolvida
 - **Mensagens de erro genéricas** ao cliente; stack traces ficam só nos logs do servidor
