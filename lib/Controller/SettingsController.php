@@ -49,7 +49,6 @@ class SettingsController extends Controller {
         string $long_audio_split_threshold = '25',
         string $enable_realtime_stt = 'false',
         string $realtime_stt_provider = 'web-speech',
-        string $realtime_stt_model = 'gemini-2.5-flash-native-audio-preview-12-2025',
         string $max_jobs_per_user_per_day = '50',
         string $use_google_stt_for_transcription = 'false',
         string $google_stt_api_key = '',
@@ -71,7 +70,8 @@ class SettingsController extends Controller {
             $this->config->setAppValue($this->appName, 'long_audio_split_threshold', $long_audio_split_threshold);
             $this->config->setAppValue($this->appName, 'enable_realtime_stt', $enable_realtime_stt);
             $this->config->setAppValue($this->appName, 'realtime_stt_provider', $realtime_stt_provider);
-            $this->config->setAppValue($this->appName, 'realtime_stt_model', $realtime_stt_model);
+            // Gemini Live model, unused since Gemini Live was dropped.
+            $this->config->deleteAppValue($this->appName, 'realtime_stt_model');
             $this->config->setAppValue($this->appName, 'max_jobs_per_user_per_day', $max_jobs_per_user_per_day);
             $this->config->setAppValue($this->appName, 'use_google_stt_for_transcription', $use_google_stt_for_transcription);
             // Google STT key is encrypted at rest like the Gemini key.
@@ -107,7 +107,6 @@ class SettingsController extends Controller {
             'long_audio_split_threshold' => $this->config->getAppValue($this->appName, 'long_audio_split_threshold', '25'),
             'enable_realtime_stt' => $this->config->getAppValue($this->appName, 'enable_realtime_stt', 'false'),
             'realtime_stt_provider' => $this->config->getAppValue($this->appName, 'realtime_stt_provider', 'web-speech'),
-            'realtime_stt_model' => $this->config->getAppValue($this->appName, 'realtime_stt_model', 'gemini-2.5-flash-native-audio-preview-12-2025'),
             'max_jobs_per_user_per_day' => $this->config->getAppValue($this->appName, 'max_jobs_per_user_per_day', '50'),
             'use_google_stt_for_transcription' => $this->config->getAppValue($this->appName, 'use_google_stt_for_transcription', 'false'),
             'google_stt_api_key' => $this->crypto->decrypt($this->config->getAppValue($this->appName, 'google_stt_api_key', '')),

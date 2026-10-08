@@ -211,7 +211,6 @@
                 long_audio_split_threshold: val('long_audio_split_threshold', '25'),
                 enable_realtime_stt: checked('enable_realtime_stt'),
                 realtime_stt_provider: val('realtime_stt_provider', 'web-speech'),
-                realtime_stt_model: val('realtime_stt_model', ''),
                 use_google_stt_for_transcription: checked('use_google_stt_for_transcription'),
                 google_stt_api_key: val('google_stt_api_key', ''),
                 analysis_model: val('analysis_model', '')

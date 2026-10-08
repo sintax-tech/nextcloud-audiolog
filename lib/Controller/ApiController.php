@@ -304,44 +304,6 @@ class ApiController extends Controller {
     }
 
     #[NoAdminRequired]
-    public function ncFile(): JSONResponse {
-        try {
-            $check = $this->requireAccess();
-            if ($check instanceof JSONResponse) { return $check; }
-            $userId = $check;
-
-            $path = $this->request->getParam('path', '');
-            $prompt = $this->request->getParam('prompt', '');
-            $outputTypes = $this->request->getParam('outputTypes', ['transcricao']);
-            $title = $this->request->getParam('title', '');
-
-            if (empty($path)) {
-                return new JSONResponse(['error' => 'Caminho do arquivo não fornecido'], Http::STATUS_BAD_REQUEST);
-            }
-
-            // Ensure outputTypes is array
-            if (!is_array($outputTypes)) {
-                $outputTypes = ['transcricao'];
-            }
-
-            $this->logger->info("AssistAudio: Processando arquivo do NC {$path} para usuario {$userId}");
-
-            $result = $this->audioService->processNextcloudFile(
-                $userId,
-                $path,
-                $prompt,
-                $outputTypes,
-                $title
-            );
-
-            return new JSONResponse($result);
-
-        } catch (\Exception $e) {
-            return $this->errorResponse($e, __FUNCTION__);
-        }
-    }
-
-    #[NoAdminRequired]
     public function status(int $taskId): JSONResponse {
         try {
             $check = $this->requireAccess();
@@ -608,12 +570,8 @@ class ApiController extends Controller {
     }
 
     /**
-     * Returns the WebSocket config for the live transcription panel.
-     *
-     * Includes the API key in the WS URL because Gemini Live's BidiGenerateContent
-     * accepts auth via `?key=`. This endpoint is gated by `enable_realtime_stt`
-     * and the existing user/group permission, so the key is only exposed to
-     * users that can already see it in the admin settings panel anyway.
+     * Returns the live transcription config for the panel. Never carries an
+     * API key.
      *
      * Two providers are supported and both are safe for any allowed-group
      * user — neither leaks the API key to the browser:

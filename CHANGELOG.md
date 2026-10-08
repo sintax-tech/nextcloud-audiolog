@@ -14,6 +14,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - The store description (English, Portuguese and Spanish) no longer says that live transcription with an external API key is restricted to admins: that option never existed. It now describes the server-side proxy and the per-user limit. The unused `realtime_stt_admin_only` setting is removed from the stored configuration on the next save of the admin settings.
 
+### Removed
+- Dead code: the Gemini Live WebSocket client in the page script (about 230 lines that nothing called; `gemini-live` already fell back to Web Speech), the unrouted `ncFile` endpoint method, `getTaskStatus`, `findStaleRunning`, and the unused `realtime_stt_model` setting (removed from the stored configuration on the next save).
+
 ### Fixed
 - "Test connection" and the healthcheck now use Nextcloud's HTTP client, like the processing itself. Before, they used raw cURL and reported "OK" for a local Ollama that the processing could not reach, because Nextcloud blocks local addresses unless `allow_local_remote_servers` is enabled. The blocked case now shows that setting, and the README documents it. This also removes `curl_close()`, deprecated in PHP 8.5.
 - Temporary copies of the audio (video extraction, duration probe, long-audio chunks, DOCX export, background-job uploads) are created through Nextcloud's `ITempManager` with `0600` permissions and deleted in every case. Before, they stayed in `/tmp` whenever the provider failed.

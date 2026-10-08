@@ -2440,13 +2440,13 @@
     }
 
     // ============================================================
-    // Live transcription (Gemini Live API via WebSocket)
+    // Live transcription (Web Speech API or Google Cloud STT via the
+    // server-side proxy /api/stt/recognize)
     // ------------------------------------------------------------
-    // Captures the mic, downsamples to 16kHz PCM16 in an AudioWorklet, ships
-    // chunks over a WebSocket to BidiGenerateContent, and renders streamed
-    // transcription text into the #live-transcript panel.
+    // Google STT: captures the mic, downsamples to 16kHz PCM16 in an
+    // AudioWorklet, posts ~5 s chunks to the proxy and renders the text into
+    // the #live-transcript panel.
     // ============================================================
-    let liveWs = null;
     let liveAudioCtx = null;
     let liveSourceNode = null;
     let liveWorkletNode = null;
@@ -2458,8 +2458,6 @@
     let liveAudioChunks = [];
     let liveAudioBlob = null;
     let liveAudioMime = '';
-    let liveSetupAcked = false;
-    let livePendingChunks = [];
 
     /**
      * The "Transcrição ao Vivo" tab is its own screen with a device picker
@@ -2754,234 +2752,8 @@
         liveTimer = setInterval(updateLiveTime, 500);
     }
 
-    /** Original Gemini Live path, kept under its own name now that we branch. */
-    async function startLiveGeminiLive(streamOpts = {}) {
-        const livePanel = document.getElementById('live-panel');
-        const liveStatus = document.getElementById('live-status');
-        const liveTranscript = document.getElementById('live-transcript');
-        // The setup card lives inside the 'live' tab panel; hide it while the
-        // session is running, restore on stop.
-        const liveSetupCard = document.querySelector('[data-tab-panel="live"] .live-setup-card');
-        const inputSection = document.querySelector('[data-tab-panel="new"] .reuniao-input-section');
-        if (livePanel) livePanel.style.display = '';
-        if (liveSetupCard) liveSetupCard.style.display = 'none';
-        if (inputSection) inputSection.style.display = 'none';
-        if (liveTranscript) liveTranscript.textContent = '';
-        liveTranscriptBuffer = '';
-        if (liveStatus) liveStatus.textContent = t('audiolog', 'Conectando...');
-
-        let cfg;
-        try {
-            const resp = await fetch(OC.generateUrl('/apps/audiolog/api/realtime/config'), {
-                method: 'GET',
-                headers: { 'Accept': 'application/json', 'requesttoken': OC.requestToken }
-            });
-            cfg = await resp.json();
-            if (cfg.error) throw new Error(cfg.error);
-            if (cfg.provider !== 'gemini-live') throw new Error(t('audiolog', 'Provedor não suportado'));
-        } catch (err) {
-            if (liveStatus) liveStatus.textContent = t('audiolog', 'Erro: ') + err.message;
-            return;
-        }
-
-        // 1) Acquire audio stream honoring the device selector (mic / system audio).
-        try {
-            const acquired = await acquireAudioStream({
-                sampleRate: 16000,
-                source: streamOpts.source,
-                deviceId: streamOpts.deviceId
-            });
-            liveStream = acquired.stream;
-            // System audio: noise processing must stay off (echoCancellation kills tab audio).
-            if (acquired.source === 'system' && liveStatus) {
-                liveStatus.textContent = t('audiolog', 'Capturando áudio do sistema...');
-            }
-        } catch (err) {
-            console.error('acquireAudioStream failed:', err);
-            const restoreInputSection = document.querySelector('[data-tab-panel="new"] .reuniao-input-section');
-            if (livePanel) livePanel.style.display = 'none';
-            if (restoreInputSection) restoreInputSection.style.display = '';
-            const msg = err.name === 'NotAllowedError'
-                ? t('audiolog', 'Permissão negada para o microfone/tela')
-                : (err.message || t('audiolog', 'Falha ao acessar dispositivo de áudio'));
-            showNotification(msg, 'error');
-            return;
-        }
-
-        // 2) AudioContext at 16kHz so the worklet output already matches what
-        //    Gemini Live wants (PCM16 mono 16kHz).
-        liveAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-        try {
-            const workletUrl = OC.linkTo('audiolog', 'js/pcm-extractor-worklet.js');
-            await liveAudioCtx.audioWorklet.addModule(workletUrl);
-        } catch (err) {
-            console.error('Worklet load failed', err);
-            if (liveStatus) liveStatus.textContent = t('audiolog', 'Falha ao carregar processador de áudio');
-            cleanupLive();
-            return;
-        }
-        liveSourceNode = liveAudioCtx.createMediaStreamSource(liveStream);
-        liveWorkletNode = new AudioWorkletNode(liveAudioCtx, 'pcm-extractor');
-        liveSourceNode.connect(liveWorkletNode);
-        // Don't connect to destination — we don't want to play the mic back.
-
-        // Parallel MediaRecorder to capture the same audio in a regular container
-        // (webm/opus). On stop we can offer "refinar com identificação de falantes"
-        // that re-sends the full file through the non-Live Gemini path with a
-        // diarization prompt.
-        liveAudioChunks = [];
-        liveAudioBlob = null;
-        try {
-            const mimeCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
-            liveAudioMime = mimeCandidates.find(m => MediaRecorder.isTypeSupported(m)) || '';
-            const recOpts = liveAudioMime ? { mimeType: liveAudioMime } : {};
-            liveMediaRecorder = new MediaRecorder(liveStream, recOpts);
-            liveMediaRecorder.ondataavailable = (e) => {
-                if (e.data && e.data.size > 0) liveAudioChunks.push(e.data);
-            };
-            liveMediaRecorder.start(2000);
-        } catch (e) {
-            console.warn('Parallel MediaRecorder failed, no diarization refine option will be offered.', e);
-            liveMediaRecorder = null;
-        }
-
-        // 3) WebSocket
-        liveWs = new WebSocket(cfg.wsUrl);
-        liveWs.binaryType = 'arraybuffer';
-
-        // Audio chunks captured before the server's setupComplete arrive are
-        // queued here and flushed once setup finishes.
-        liveSetupAcked = false;
-        livePendingChunks = [];
-
-        liveWs.onopen = () => {
-            // Pin recognition language so the model doesn't drift into other
-            // languages mid-stream (we saw it slipping into Mandarin without this).
-            // The Live API v1beta accepts `speechConfig.languageCode` in
-            // generationConfig; `inputAudioTranscription` must be an empty
-            // object — `languageCodes` was removed in late 2025.
-            const langTag = ({ pt: 'pt-BR', en: 'en-US', es: 'es-ES' })[cfg.language] || 'pt-BR';
-            const setupMsg = {
-                setup: {
-                    model: cfg.model,
-                    generationConfig: {
-                        responseModalities: ['AUDIO'],
-                        speechConfig: { languageCode: langTag }
-                    },
-                    inputAudioTranscription: {}
-                }
-            };
-            console.debug('[live] setup →', setupMsg);
-            liveWs.send(JSON.stringify(setupMsg));
-            if (liveStatus) liveStatus.textContent = t('audiolog', 'Aguardando setup...');
-            liveStartTime = Date.now();
-            liveTimer = setInterval(updateLiveTime, 500);
-        };
-
-        liveWs.onmessage = async (event) => {
-            let raw;
-            try {
-                if (event.data instanceof Blob) {
-                    raw = await event.data.text();
-                } else if (event.data instanceof ArrayBuffer) {
-                    raw = new TextDecoder().decode(event.data);
-                } else {
-                    raw = event.data;
-                }
-            } catch (e) {
-                console.warn('Live WS: failed to read frame', e);
-                return;
-            }
-            console.debug('[live] WS frame:', raw);
-            let payload;
-            try { payload = JSON.parse(raw); } catch (_) { return; }
-            handleLiveMessage(payload);
-        };
-
-        liveWs.onerror = (e) => {
-            console.error('Live WS error event:', e);
-            if (liveStatus) liveStatus.textContent = t('audiolog', 'Erro de conexão');
-        };
-
-        liveWs.onclose = (e) => {
-            console.warn('[live] WS closed', { code: e.code, reason: e.reason, wasClean: e.wasClean });
-            if (liveStatus) {
-                let msg = t('audiolog', 'Conexão encerrada');
-                if (e.code && e.code !== 1000) {
-                    msg += ' (' + e.code + (e.reason ? ' — ' + e.reason : '') + ')';
-                }
-                liveStatus.textContent = msg;
-            }
-        };
-
-        // 4) Pipe PCM chunks from the worklet to the WebSocket. We must wait for
-        //    setupComplete from the server before sending audio — otherwise the
-        //    server returns 1007 "Cannot extract voices from a non-audio request"
-        //    because it hasn't finalized the audio decoder yet.
-        liveWorkletNode.port.onmessage = (e) => {
-            if (!liveWs || liveWs.readyState !== WebSocket.OPEN) return;
-            const b64 = arrayBufferToBase64(e.data);
-            if (!liveSetupAcked) {
-                if (livePendingChunks.length < 200) { // cap ~50s of audio
-                    livePendingChunks.push(b64);
-                }
-                return;
-            }
-            try {
-                liveWs.send(JSON.stringify({
-                    realtimeInput: {
-                        audio: { mimeType: 'audio/pcm;rate=16000', data: b64 }
-                    }
-                }));
-            } catch (err) {
-                console.warn('Failed to send PCM chunk:', err);
-            }
-        };
-
-        // 5) UI swap
-        elements.btnRecord.disabled = true;
-        document.getElementById('btn-record-live').disabled = true;
-    }
-
-    function handleLiveMessage(payload) {
-        const liveTranscript = document.getElementById('live-transcript');
-        const liveStatus = document.getElementById('live-status');
-        if (!liveTranscript) return;
-
-        // Server confirmed setup — start sending the queued PCM chunks.
-        if (payload.setupComplete) {
-            liveSetupAcked = true;
-            if (liveStatus) liveStatus.textContent = t('audiolog', 'Capturando...');
-            if (livePendingChunks.length > 0) {
-                console.debug('[live] flushing', livePendingChunks.length, 'queued PCM chunks');
-                for (const b64 of livePendingChunks) {
-                    try {
-                        liveWs.send(JSON.stringify({
-                            realtimeInput: { audio: { mimeType: 'audio/pcm;rate=16000', data: b64 } }
-                        }));
-                    } catch (_) { /* ignore */ }
-                }
-                livePendingChunks = [];
-            }
-            return;
-        }
-
-        const sc = payload.serverContent || {};
-        // Input transcription = what the USER said. This is the channel we
-        // actually care about for live transcription.
-        if (sc.inputTranscription && sc.inputTranscription.text) {
-            appendLiveText(sc.inputTranscription.text);
-        }
-        // Output transcription = what the MODEL is saying back. We ignore it
-        // (we don't want the assistant chatter to land in the transcript).
-        if (sc.turnComplete) {
-            liveTranscriptBuffer += '\n';
-            renderLiveTranscript();
-        }
-    }
-
     /**
-     * Sometimes Gemini Live mis-detects language and emits a chunk of CJK
+     * Sometimes the recognizer mis-detects language and emits a chunk of CJK
      * (Mandarin/Japanese/Korean) glyphs even when the user is speaking pt-BR.
      * If a chunk is mostly non-Latin, replace it with a clear placeholder so
      * the rendered transcript stays readable.
@@ -3397,10 +3169,6 @@
         if (liveStream) {
             liveStream.getTracks().forEach(t => t.stop());
             liveStream = null;
-        }
-        if (liveWs) {
-            try { liveWs.close(); } catch (_) {}
-            liveWs = null;
         }
     }
 

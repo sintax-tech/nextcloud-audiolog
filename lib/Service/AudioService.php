@@ -1762,13 +1762,6 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         return $tasks;
     }
 
-    public function getTaskStatus(int $taskId): array {
-        return [
-            'status' => 'completed',
-            'taskId' => $taskId
-        ];
-    }
-
     public function getHistory(string $userId): array {
         try {
             $userFolder = $this->rootFolder->getUserFolder($userId);
