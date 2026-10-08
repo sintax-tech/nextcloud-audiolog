@@ -80,10 +80,10 @@ $icons = [
         <div class="form-group">
             <label for="language"><?php p($l->t('Idioma Padrão')); ?></label>
             <select id="language" name="language">
-                <option value="pt" <?php echo $_['language'] === 'pt' ? 'selected' : ''; ?>>Português</option>
-                <option value="en" <?php echo $_['language'] === 'en' ? 'selected' : ''; ?>>Inglês</option>
-                <option value="es" <?php echo $_['language'] === 'es' ? 'selected' : ''; ?>>Espanhol</option>
-                <option value="auto" <?php echo $_['language'] === 'auto' ? 'selected' : ''; ?>>Detectar Automaticamente</option>
+                <option value="pt" <?php echo $_['language'] === 'pt' ? 'selected' : ''; ?>><?php p($l->t('Português')); ?></option>
+                <option value="en" <?php echo $_['language'] === 'en' ? 'selected' : ''; ?>><?php p($l->t('Inglês')); ?></option>
+                <option value="es" <?php echo $_['language'] === 'es' ? 'selected' : ''; ?>><?php p($l->t('Espanhol')); ?></option>
+                <option value="auto" <?php echo $_['language'] === 'auto' ? 'selected' : ''; ?>><?php p($l->t('Detectar automaticamente')); ?></option>
             </select>
             <p class="hint"><?php p($l->t('Idioma principal dos áudios para melhor transcrição.')); ?></p>
         </div>
@@ -122,7 +122,7 @@ $icons = [
             <input type="checkbox" id="save_audio" name="save_audio" class="checkbox"
                    <?php echo $_['save_audio'] === 'true' ? 'checked' : ''; ?>>
             <label for="save_audio"><?php p($l->t('Salvar arquivos de áudio automaticamente')); ?></label>
-            <p class="hint"><?php p($l->t('Salva os arquivos de áudio na pasta "Audios" do usuário.')); ?></p>
+            <p class="hint"><?php p($l->t('Salva os arquivos de áudio na pasta "Audiolog" do usuário.')); ?></p>
         </div>
 
         <!-- Default Output -->

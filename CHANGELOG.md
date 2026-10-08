@@ -16,6 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The page no longer adds Gemini, OpenAI, Google Speech or the Ollama URL to its Content Security Policy: the browser never calls a provider directly (everything goes through Audiolog's own endpoints), and the internal Ollama address no longer appears in a response header.
 
+- Interface translations: about 85 strings that showed in Portuguese for English users and 170 for Spanish users are now translated, the admin page script uses `t()` for every text, and dates follow the user's locale. Every string in use exists in English, Portuguese and Spanish (checked by a test).
+- The live transcription refine pass no longer sends a prompt fixed in Brazilian Portuguese from the browser; the server builds it in the language the admin configured, so English and Spanish users get the refined transcript in their language.
+
 ### Removed
 - Dead code: the Gemini Live WebSocket client in the page script (about 230 lines that nothing called; `gemini-live` already fell back to Web Speech), the unrouted `ncFile` endpoint method, `getTaskStatus`, `findStaleRunning`, and the unused `realtime_stt_model` setting (removed from the stored configuration on the next save).
 

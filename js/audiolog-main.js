@@ -7,6 +7,14 @@
 (function() {
     'use strict';
 
+    // BCP-47 locale of the Nextcloud user (dates), e.g. "pt_BR" → "pt-BR".
+    function userLocale() {
+        const loc = (window.OC && typeof OC.getLocale === 'function' && OC.getLocale())
+            || (window.OC && typeof OC.getLanguage === 'function' && OC.getLanguage())
+            || undefined;
+        return loc ? String(loc).replace('_', '-') : undefined;
+    }
+
 
     // ============================================================
     // IndexedDB recording store
@@ -2241,7 +2249,7 @@
         sizeCell.textContent = item.size != null ? formatBytes(item.size) : '';
         const dateCell = el('div', 'audiolog-col-date');
         const ts = (item.mtime || item.createdAt || 0) * 1000;
-        dateCell.textContent = ts ? new Date(ts).toLocaleString('pt-BR') : '';
+        dateCell.textContent = ts ? new Date(ts).toLocaleString(userLocale()) : '';
 
         // ----- Actions column -----
         const actionsCell = el('div', 'audiolog-col-actions');
@@ -3042,7 +3050,7 @@
         // Use the title from the live tab's own input (NOT the new tab's input,
         // so the two tabs don't share state).
         const title = (liveTitleInput?.value || '').trim()
-            || ('Transcrição ao vivo - ' + new Date().toLocaleString('pt-BR'));
+            || (t('audiolog', 'Transcrição ao vivo') + ' - ' + new Date().toLocaleString(userLocale()));
 
         // Hide live transcript view, show full-screen loading.
         if (livePanel) livePanel.style.display = 'none';
@@ -3105,8 +3113,9 @@
                 body: JSON.stringify({
                     ncPath: savedAudioPath,
                     outputTypes: ['transcricao'],
-                    title: title,
-                    prompt: 'Identifique CLARAMENTE cada falante distinto pela voz e jeito de falar. Use [Falante 1], [Falante 2], etc. em uma nova linha antes de cada fala. Mantenha a transcrição literal, fluida, em português brasileiro.'
+                    title: title
+                    // No prompt: the server builds the diarization prompt for
+                    // 'transcricao' in the language configured by the admin.
                 })
             });
             const r = await resp.json();

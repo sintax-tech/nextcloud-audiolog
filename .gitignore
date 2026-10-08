@@ -10,3 +10,4 @@ vendor/
 .phpunit.cache/
 composer.phar
 .remember/
+__pycache__/
