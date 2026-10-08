@@ -13,6 +13,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The Deck board picker lists every board the user can edit, including boards shared through a group or a circle, and no longer lists archived boards or boards the user can only read. Board titles are no longer written to the log.
 - Live transcription with Google Cloud Speech-to-Text never started ("Invalid configuration"): the page still expected the API key in the browser after the key moved to the server-side proxy.
 - The app tarball is now built with `git archive` from an explicit list of versioned paths and checked before signing. The 1.0.3 and 1.0.4 tarballs also contained the developer's local `.remember/` session notes (no credentials).
+- Renaming a recording saved with a title (stored in `Audiolog/<title>/`) failed with "File not found", or renamed a file with the same name at the `Audiolog/` root. Notes and DOCX saved for those recordings were not linked to them either, so "delete with outputs" left them behind. Each saved note or document is now linked separately, instead of replacing the previous one.
 
 ## 1.0.4 - 2026-10-08
 

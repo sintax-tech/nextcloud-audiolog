@@ -3,6 +3,12 @@ declare(strict_types=1);
 
 namespace OCA\Audiolog\Tests\Unit\Support;
 
+use OCA\Audiolog\Db\JobMapper;
+use OCA\Audiolog\Service\AudioService;
+use OCA\Audiolog\Service\CryptoHelper;
+use OCA\Audiolog\Service\SecretRedactor;
+use OCP\Files\IRootFolder;
+use OCP\Http\Client\IClientService;
 use OCP\IConfig;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -41,5 +47,29 @@ final class TestHelpers {
         rename($path, $final);
         file_put_contents($final, $content);
         return $final;
+    }
+
+    /**
+     * AudioService with mocks for every collaborator; pass real objects or
+     * configured mocks in $deps (keys: clientService, rootFolder, logger,
+     * config, crypto, jobMapper, redactor) to override.
+     */
+    public static function audioService(TestCase $tc, array $deps = []): AudioService {
+        $mock = fn (string $class) => (new \ReflectionMethod($tc, 'createMock'))->invoke($tc, $class);
+        $crypto = $deps['crypto'] ?? (function () use ($mock) {
+            $c = $mock(CryptoHelper::class);
+            $c->method('decrypt')->willReturnArgument(0);
+            return $c;
+        })();
+        $config = $deps['config'] ?? self::config($tc, ['max_jobs_per_user_per_day' => '0']);
+        return new AudioService(
+            $deps['clientService'] ?? $mock(IClientService::class),
+            $deps['rootFolder'] ?? $mock(IRootFolder::class),
+            $deps['logger'] ?? new RecordingLogger(),
+            $config,
+            $crypto,
+            $deps['jobMapper'] ?? $mock(JobMapper::class),
+            $deps['redactor'] ?? new SecretRedactor($config, $crypto),
+        );
     }
 }

@@ -1593,37 +1593,60 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      */
     private function appendOutputToMeta(string $userId, string $audioPath, array $output): void {
         try {
-            $userFolder = $this->rootFolder->getUserFolder($userId);
-            $audioName = basename($audioPath);
-            try {
-                $audiosFolder = $userFolder->get('Audiolog');
-            } catch (NotFoundException $e) {
-                return; // No folder, nothing to update.
-            }
-            if (!($audiosFolder instanceof \OCP\Files\Folder)) {
-                return;
-            }
-            if (!$audiosFolder->nodeExists($audioName)) {
+            // Resolve the audio by its full relative path: recordings with a
+            // title live in Audiolog/<title>/, not at the Audiolog root.
+            $audioNode = $this->resolveAudiologFile($userId, $audioPath);
+            if ($audioNode === null) {
                 return; // Audio not in Audiolog — skip metadata.
             }
+            $folder = $audioNode->getParent();
+            $audioName = $audioNode->getName();
 
-            $meta = $this->readMeta($audiosFolder, $audioName) ?? [
+            $meta = $this->readMeta($folder, $audioName) ?? [
                 'title' => pathinfo($audioName, PATHINFO_FILENAME),
-                'audioPath' => $audioPath,
+                'audioPath' => trim($audioPath, '/'),
                 'createdAt' => time(),
                 'outputs' => []
             ];
 
             // Replace existing entry with same type, keep history otherwise.
+            // Saved notes/documents are kept one per path.
             $existing = $meta['outputs'] ?? [];
-            $filtered = array_values(array_filter($existing, fn($o) => ($o['type'] ?? '') !== ($output['type'] ?? '')));
+            $filtered = array_values(array_filter($existing, function ($o) use ($output) {
+                if (!empty($output['path'])) {
+                    return ($o['path'] ?? '') !== $output['path'];
+                }
+                return ($o['type'] ?? '') !== ($output['type'] ?? '');
+            }));
             $filtered[] = array_merge(['generatedAt' => time()], $output);
             $meta['outputs'] = $filtered;
 
-            $this->writeMeta($audiosFolder, $audioName, $meta);
+            $this->writeMeta($folder, $audioName, $meta);
         } catch (\Throwable $e) {
             $this->logger->warning('Audiolog: appendOutputToMeta failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Resolve a file inside Audiolog/ by its relative path ("Audiolog/X/a.webm"),
+     * refusing anything outside it. Returns null when it does not exist.
+     */
+    private function resolveAudiologFile(string $userId, string $relPath): ?\OCP\Files\File {
+        $relPath = trim($relPath, '/');
+        if (!str_starts_with($relPath, 'Audiolog/')) {
+            return null;
+        }
+        foreach (explode('/', $relPath) as $seg) {
+            if ($seg === '' || $seg === '.' || $seg === '..' || str_contains($seg, '\\') || str_contains($seg, "\0")) {
+                return null;
+            }
+        }
+        try {
+            $node = $this->rootFolder->getUserFolder($userId)->get($relPath);
+        } catch (NotFoundException $e) {
+            return null;
+        }
+        return $node instanceof \OCP\Files\File ? $node : null;
     }
 
     private function extractTasks(string $text): array {
@@ -1933,22 +1956,15 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             return ['error' => 'Título vazio'];
         }
         try {
-            $userFolder = $this->rootFolder->getUserFolder($userId);
-            try {
-                $audiosFolder = $userFolder->get('Audiolog');
-            } catch (NotFoundException $e) {
-                return ['error' => 'Pasta Audiolog não encontrada'];
-            }
-            if (!($audiosFolder instanceof \OCP\Files\Folder)) {
-                return ['error' => 'Audiolog não é uma pasta'];
-            }
-
-            $oldName = basename($audioPath);
-            if (!$audiosFolder->nodeExists($oldName)) {
+            // Full relative path: the recording may live in Audiolog/<title>/.
+            $audioNode = $this->resolveAudiologFile($userId, $audioPath);
+            if ($audioNode === null) {
                 return ['error' => 'Arquivo não encontrado'];
             }
+            $folder = $audioNode->getParent();
+            $oldName = $audioNode->getName();
+            $relDir = dirname(trim($audioPath, '/'));
 
-            $audioNode = $audiosFolder->get($oldName);
             $ext = pathinfo($oldName, PATHINFO_EXTENSION) ?: 'mp3';
             $safeName = $this->sanitizeFilename($newTitle);
             if (empty($safeName)) {
@@ -1957,45 +1973,46 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
             $newName = $safeName . '.' . $ext;
             $counter = 1;
-            while ($newName !== $oldName && $audiosFolder->nodeExists($newName)) {
+            while ($newName !== $oldName && $folder->nodeExists($newName)) {
                 $newName = $safeName . '_' . $counter . '.' . $ext;
                 $counter++;
             }
 
             // Move audio
             if ($newName !== $oldName) {
-                $audioNode->move($audiosFolder->getPath() . '/' . $newName);
+                $audioNode->move($folder->getPath() . '/' . $newName);
             }
 
             // Move/rename meta
             $oldMeta = $this->metaFileName($oldName);
             $newMeta = $this->metaFileName($newName);
             $meta = null;
-            if ($audiosFolder->nodeExists($oldMeta)) {
-                $metaNode = $audiosFolder->get($oldMeta);
+            if ($folder->nodeExists($oldMeta)) {
+                $metaNode = $folder->get($oldMeta);
                 if ($metaNode instanceof \OCP\Files\File) {
                     $meta = json_decode($metaNode->getContent(), true) ?: [];
                     if ($oldMeta !== $newMeta) {
-                        $metaNode->move($audiosFolder->getPath() . '/' . $newMeta);
+                        $metaNode->move($folder->getPath() . '/' . $newMeta);
                     }
                 }
             }
             if (!is_array($meta)) {
                 $meta = ['outputs' => []];
             }
+            $newPath = $relDir . '/' . $newName;
             $meta['title'] = $newTitle;
-            $meta['audioPath'] = 'Audiolog/' . $newName;
-            $this->writeMeta($audiosFolder, $newName, $meta);
+            $meta['audioPath'] = $newPath;
+            $this->writeMeta($folder, $newName, $meta);
 
             return [
                 'success' => true,
-                'newPath' => 'Audiolog/' . $newName,
+                'newPath' => $newPath,
                 'newName' => $newName
             ];
 
         } catch (\Exception $e) {
             $this->logger->error('Erro ao renomear gravação: ' . $e->getMessage());
-            return ['error' => $e->getMessage()];
+            return ['error' => 'Não foi possível renomear a gravação.'];
         }
     }
 
