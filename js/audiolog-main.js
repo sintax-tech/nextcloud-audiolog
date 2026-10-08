@@ -1742,7 +1742,14 @@
     }
 
     function showNotification(message, type) {
-        if (typeof OC !== 'undefined' && OC.Notification) {
+        // OC.Notification foi removido na Nextcloud 34; OCP.Toast existe da 28 à 35.
+        if (typeof OCP !== 'undefined' && OCP.Toast) {
+            if (type === 'error') {
+                OCP.Toast.error(message);
+            } else {
+                OCP.Toast.message(message);
+            }
+        } else if (typeof OC !== 'undefined' && OC.Notification) {
             if (type === 'error') {
                 OC.Notification.showTemporary(message, { type: 'error' });
             } else {
