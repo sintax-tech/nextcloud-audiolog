@@ -24,6 +24,7 @@ The app deliberately keeps providers isolated: pick OpenAI and the app won't eve
 
 ## Features
 
+- **Audio and video files** accepted by content, not only by name: MP3, M4A (iPhone), OPUS/OGG (WhatsApp), WAV, FLAC, AAC, WebM, MP4 and more; video is converted to audio with `ffmpeg`
 - **Recording** with pause / resume / real-time size & duration indicator
 - **Auto-recovery** if the tab closes or the network drops mid-recording (IndexedDB-backed)
 - **Live transcription** with auto-restart on silence
@@ -130,9 +131,14 @@ Releases are published as a signed tarball attached to a GitHub Release (`vX.Y.Z
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE).
 
-## Author
+## About Sintax
 
-[Jhonatan Jaworski](mailto:jhonatan@sintax.tech)
+Built and maintained by [Sintax](https://sintax.tech).
+
+- Website: https://sintax.tech
+- GitHub: https://github.com/sintax-tech
+- Contact: contato@sintax.tech
+- Other Nextcloud apps by Sintax: [MCP for Nextcloud](https://apps.nextcloud.com/apps/mcp) · [Audiolog](https://apps.nextcloud.com/apps/audiolog)
 
 ---
 
@@ -154,6 +160,7 @@ Os provedores são isolados: se você escolher OpenAI, o app **não chama Google
 
 ### O que está incluído
 
+- **Arquivos de áudio e vídeo** aceitos pelo conteúdo, não só pelo nome: MP3, M4A (iPhone), OPUS/OGG (WhatsApp), WAV, FLAC, AAC, WebM, MP4 e outros; vídeo é convertido em áudio com o `ffmpeg`
 - **Gravação** com pausa, retomada e indicador real de tamanho/duração
 - **Recuperação automática** se a aba fechar ou a internet cair no meio da gravação (persistência via IndexedDB)
 - **Transcrição em tempo real** com auto-reconexão em silêncio
@@ -223,3 +230,12 @@ As releases são publicadas como um tarball assinado anexado a uma GitHub Releas
 ### Licença
 
 AGPL-3.0-or-later. Veja [LICENSE](LICENSE).
+
+## Sobre a Sintax
+
+Desenvolvido e mantido pela [Sintax](https://sintax.tech).
+
+- Site: https://sintax.tech
+- GitHub: https://github.com/sintax-tech
+- Contato: contato@sintax.tech
+- Outros apps da Sintax para Nextcloud: [MCP for Nextcloud](https://apps.nextcloud.com/apps/mcp) · [Audiolog](https://apps.nextcloud.com/apps/audiolog)

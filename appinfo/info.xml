@@ -11,6 +11,7 @@
 
 ## Features
 
+- **Audio and video files** accepted by content: MP3, M4A (iPhone), OPUS/OGG (WhatsApp), WAV, WebM, MP4 and more
 - **In-browser recording** with pause, resume and a real-time size/duration indicator
 - **Auto-recovery** if the tab closes or the network drops mid-recording (IndexedDB-backed)
 - **Live transcription** via the browser's Web Speech API (free) or Google Cloud Speech-to-Text
@@ -33,6 +34,7 @@
 
 ## Recursos
 
+- **Arquivos de áudio e vídeo** aceitos pelo conteúdo: MP3, M4A (iPhone), OPUS/OGG (WhatsApp), WAV, WebM, MP4 e outros
 - **Gravação no navegador** com pausa, retomada e indicador de tamanho/duração em tempo real
 - **Recuperação automática** se a aba fechar ou a rede cair durante a gravação (com IndexedDB)
 - **Transcrição ao vivo** pela Web Speech API do navegador (gratuita) ou pelo Google Cloud Speech-to-Text
@@ -55,6 +57,7 @@
 
 ## Funciones
 
+- **Archivos de audio y video** aceptados por su contenido: MP3, M4A (iPhone), OPUS/OGG (WhatsApp), WAV, WebM, MP4 y más
 - **Grabación en el navegador** con pausa, reanudación e indicador de tamaño y duración en tiempo real
 - **Recuperación automática** si la pestaña se cierra o la red se cae durante la grabación (con IndexedDB)
 - **Transcripción en vivo** con la Web Speech API del navegador (gratuita) o con Google Cloud Speech-to-Text
@@ -72,7 +75,7 @@
 - La transcripción en vivo con Google Cloud Speech-to-Text pasa por un proxy en el servidor: la clave de API nunca llega al navegador y cada usuario tiene un límite de solicitudes por minuto
 - La Web Speech API se ejecuta íntegramente en el navegador: ninguna clave sale del servidor
     ]]></description>
-    <version>1.0.4</version>
+    <version>1.0.5</version>
     <licence>agpl</licence>
     <author mail="jhonatan@sintax.tech">Jhonatan Jaworski</author>
     <namespace>Audiolog</namespace>
