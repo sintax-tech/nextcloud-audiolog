@@ -1,0 +1,30 @@
+{
+    "name": "sintax-tech/nextcloud-audiolog",
+    "description": "Audiolog: record, transcribe and process audio with AI in Nextcloud",
+    "type": "project",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "php": ">=8.1"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "nextcloud/ocp": "v28.0.9"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "OCA\\Audiolog\\": "lib/",
+            "OCP\\": "vendor/nextcloud/ocp/OCP/",
+            "OCA\\Audiolog\\Tests\\Unit\\": "tests/unit/"
+        }
+    },
+    "config": {
+        "platform": {
+            "php": "8.1.0"
+        },
+        "sort-packages": true,
+        "optimize-autoloader": true
+    },
+    "scripts": {
+        "test": "php -d memory_limit=1G vendor/bin/phpunit -c tests/phpunit.xml"
+    }
+}

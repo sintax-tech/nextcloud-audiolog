@@ -1,0 +1,13 @@
+{
+  "name": "audiolog",
+  "private": true,
+  "description": "Dev-only tooling for the Audiolog Nextcloud app (tests). Nothing here ships in the app tarball.",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "test": "jest --config tests/jest.config.js"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  }
+}

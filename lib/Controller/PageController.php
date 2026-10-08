@@ -36,6 +36,7 @@ class PageController extends Controller {
     #[NoAdminRequired]
     #[NoCSRFRequired]
     public function index(): TemplateResponse {
+        Util::addScript(Application::APP_ID, 'audiolog-text-utils');
         Util::addScript(Application::APP_ID, 'audiolog-speaker-naming');
         Util::addScript(Application::APP_ID, 'audiolog-main');
         Util::addStyle(Application::APP_ID, 'style');

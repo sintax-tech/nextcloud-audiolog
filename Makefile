@@ -91,11 +91,13 @@ test: test-php test-js
 
 .PHONY: test-php
 test-php:
-	@cd tests && phpunit -c phpunit.xml || echo "(phpunit not installed locally — run from a Nextcloud test container)"
+	@test -x vendor/bin/phpunit || { echo "Run 'composer install' first (dev-only, vendor/ is git-ignored)"; exit 1; }
+	@php -d memory_limit=1G vendor/bin/phpunit -c tests/phpunit.xml
 
 .PHONY: test-js
 test-js:
-	@cd tests && npx jest --config jest.config.js || echo "(jest not installed locally — run 'npm i -D jest' first)"
+	@test -d node_modules/jest || { echo "Run 'npm install' first (dev-only, node_modules/ is git-ignored)"; exit 1; }
+	@npx jest --config tests/jest.config.js
 
 .PHONY: version
 version:

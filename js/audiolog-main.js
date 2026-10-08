@@ -3137,22 +3137,8 @@
         let lastChunkText = '';
         let chunkInFlight = 0;
 
-        // Find longest overlap where suffix of `prev` equals prefix of `next`,
-        // matching whole words only. Returns chars consumed from `next`.
-        const findTextOverlap = (prev, next) => {
-            if (!prev || !next) return 0;
-            const prevTail = prev.slice(-80).toLowerCase();
-            const nextHead = next.slice(0, 80).toLowerCase();
-            const max = Math.min(prevTail.length, nextHead.length);
-            for (let len = max; len >= 4; len--) {
-                if (prevTail.slice(-len) === nextHead.slice(0, len)) {
-                    // Snap to a word boundary so we don't chop mid-word.
-                    const boundary = next.slice(0, len).search(/\s\S*$/);
-                    return boundary > 0 ? boundary : len;
-                }
-            }
-            return 0;
-        };
+        // Suffix/prefix dedup lives in audiolog-text-utils.js (unit-tested).
+        const findTextOverlap = window.AudiologTextUtils.findTextOverlap;
 
         const sendChunk = async (pcmBuffer) => {
             chunkInFlight++;

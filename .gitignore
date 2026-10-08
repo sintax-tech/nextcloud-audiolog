@@ -7,3 +7,5 @@ node_modules/
 *.swp
 .phpunit.result.cache
 vendor/
+.phpunit.cache/
+composer.phar
