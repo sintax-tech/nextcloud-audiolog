@@ -112,7 +112,7 @@ make test         # PHPUnit + Jest
 make clean        # wipe build/
 ```
 
-Releases are published as a signed tarball committed under `dist/`; the app store downloads it from the raw GitHub URL. See [`PUBLISHING.md`](PUBLISHING.md) for the full release-to-store workflow and [`CHANGELOG.md`](CHANGELOG.md) for the version history.
+Releases are published as a signed tarball attached to a GitHub Release (`vX.Y.Z`); the app store downloads it from the release URL (versions up to 1.0.4 remain under `dist/`). See [`PUBLISHING.md`](PUBLISHING.md) for the full release-to-store workflow and [`CHANGELOG.md`](CHANGELOG.md) for the version history.
 
 ## License
 
@@ -198,7 +198,7 @@ make test         # PHPUnit + Jest
 make clean        # apaga build/
 ```
 
-As releases são publicadas como um tarball assinado versionado em `dist/`; a loja baixa pela URL raw do GitHub. Veja [`PUBLISHING.md`](PUBLISHING.md) para o fluxo completo e [`CHANGELOG.md`](CHANGELOG.md) para o histórico de versões.
+As releases são publicadas como um tarball assinado anexado a uma GitHub Release (`vX.Y.Z`); a loja baixa pela URL da release (as versões até a 1.0.4 permanecem em `dist/`). Veja [`PUBLISHING.md`](PUBLISHING.md) para o fluxo completo e [`CHANGELOG.md`](CHANGELOG.md) para o histórico de versões.
 
 ### Licença
 

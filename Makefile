@@ -5,6 +5,8 @@
 #                     Nextcloud app store / `occ app:install --url=`
 #   make sign       → sign the tarball with the app's certificate (private
 #                     key in ~/.nextcloud/certificates/audiolog.key)
+#   make release    → create the GitHub Release v<version> with the signed-build
+#                     tarball and the CHANGELOG notes (tag must be pushed first)
 #   make clean      → wipe the build/ dir
 #   make lint       → php -l on every .php file
 #
@@ -61,9 +63,19 @@ sign: build
 	@echo "→ Signature: $(sign_dir)/$(app_name)-$(version).sig"
 	@echo ""
 	@echo "Submission payload (paste this into the app store form):"
-	@echo "  Tarball URL: <publish $(app_name)-$(version).tar.gz somewhere first>"
+	@echo "  Tarball URL: https://github.com/sintax-tech/nextcloud-$(app_name)/releases/download/v$(version)/$(app_name)-$(version).tar.gz (after make release)"
 	@echo "  Signature:"
 	@cat $(sign_dir)/$(app_name)-$(version).sig
+
+# Requires: make sign done, tag v<version> pushed, gh authenticated.
+# Attaches only the tarball (never the .sig); refuses empty release notes.
+.PHONY: release
+release:
+	@test -f $(appstore_dir)/$(app_name)-$(version).tar.gz || { echo "Run 'make sign' first"; exit 1; }
+	@awk -v v="$(version)" '$$0 ~ "^## "v" " {f=1; next} /^## /{f=0} f' CHANGELOG.md > $(build_dir)/release-notes.md
+	@test -s $(build_dir)/release-notes.md || { echo "No CHANGELOG section for $(version)"; exit 1; }
+	@gh release create v$(version) $(appstore_dir)/$(app_name)-$(version).tar.gz \
+		--title "Audiolog $(version)" --notes-file $(build_dir)/release-notes.md
 
 .PHONY: clean
 clean:
