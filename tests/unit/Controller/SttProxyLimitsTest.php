@@ -38,7 +38,12 @@ class SttProxyLimitsTest extends TestCase {
         $crypto = $this->createMock(CryptoHelper::class);
         $crypto->method('encrypt')->willReturnArgument(0);
 
-        $controller = new SettingsController('audiolog', $this->createMock(IRequest::class), $config, $crypto);
+        $controller = new SettingsController(
+            'audiolog', $this->createMock(IRequest::class), $config, $crypto,
+            $this->createMock(\OCP\Http\Client\IClientService::class),
+            $this->createMock(\OCA\Audiolog\Service\SecretRedactor::class),
+            $this->createMock(\OCP\ITempManager::class),
+        );
         $controller->saveSettings('gemini', 'https://x', '', 'm', 'pt', '100', 'true', 'transcricao');
 
         $this->assertArrayNotHasKey('realtime_stt_admin_only', $written);

@@ -163,6 +163,9 @@ class AudioService {
                 'DELETE' => $client->delete($url, $options),
                 default => $client->post($url, $options),
             };
+        } catch (\OCP\Http\Client\LocalServerException $e) {
+            throw new ProviderException('O Nextcloud bloqueou o acesso a um endereço local ou da rede interna. '
+                . "Para usar um Ollama local, defina 'allow_local_remote_servers' => true no config.php.");
         } catch (\Throwable $e) {
             throw new ProviderException($this->redactor->redact($e->getMessage()));
         }

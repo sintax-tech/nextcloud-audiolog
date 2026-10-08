@@ -50,6 +50,7 @@ The app deliberately keeps providers isolated: pick OpenAI and the app won't eve
 - **PHP 8.1+** with `curl`, `json`, `fileinfo`, `mbstring`, `openssl`
 - **`ffmpeg`** and **`ffprobe`** on the server PATH (used for audio length probing and video → audio extraction)
 - A valid API key for at least one provider, **or** a working local Ollama
+- **Local Ollama** (on `localhost` or the internal network): Nextcloud blocks requests to local and private addresses by default, and Audiolog uses Nextcloud's HTTP client. Add `'allow_local_remote_servers' => true,` to `config/config.php`; otherwise "Test connection" and processing report that the address was blocked.
 
 ## Installation
 
@@ -168,6 +169,7 @@ Os provedores são isolados: se você escolher OpenAI, o app **não chama Google
 - **PHP 8.1+** com `curl`, `json`, `fileinfo`, `mbstring`, `openssl`
 - **`ffmpeg`** e **`ffprobe`** no PATH do servidor
 - Chave de API de pelo menos um provedor **ou** um Ollama local funcionando
+- **Ollama local** (em `localhost` ou na rede interna): o Nextcloud bloqueia por padrão requisições a endereços locais e privados, e o Audiolog usa o cliente HTTP do Nextcloud. Adicione `'allow_local_remote_servers' => true,` ao `config/config.php`; sem isso, o "Testar conexão" e o processamento avisam que o endereço foi bloqueado.
 
 ### Instalação
 
