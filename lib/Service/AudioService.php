@@ -6,10 +6,12 @@ namespace OCA\Audiolog\Service;
 use OCA\Audiolog\AppInfo\Application;
 use OCA\Audiolog\Db\Job;
 use OCA\Audiolog\Db\JobMapper;
+use OCP\App\IAppManager;
 use OCP\Http\Client\IClientService;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCP\IConfig;
+use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 
 // (CryptoHelper is in the same namespace, no use needed)
@@ -23,7 +25,9 @@ class AudioService {
         private LoggerInterface $logger,
         private IConfig $config,
         private CryptoHelper $crypto,
-        private JobMapper $jobMapper
+        private JobMapper $jobMapper,
+        private IAppManager $appManager,
+        private IDBConnection $db
     ) {
     }
 
@@ -2303,13 +2307,13 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             $this->logger->info("getDeckBoards: Starting for user {$userId}");
 
             // Check if Deck app is available
-            if (!\OC::$server->getAppManager()->isInstalled('deck')) {
+            if (!$this->appManager->isInstalled('deck')) {
                 $this->logger->warning("getDeckBoards: Deck not enabled for user {$userId}");
                 return ['boards' => [], 'error' => 'Deck não está instalado ou habilitado'];
             }
 
             $this->logger->info("getDeckBoards: Deck is enabled, querying database");
-            $db = \OC::$server->getDatabaseConnection();
+            $db = $this->db;
             $boards = [];
 
             // First get boards where user is owner
@@ -2415,7 +2419,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             }
 
             // Create cards in Deck
-            $db = \OC::$server->getDatabaseConnection();
+            $db = $this->db;
             $createdCards = 0;
 
             foreach ($tasks as $task) {
