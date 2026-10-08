@@ -24,6 +24,7 @@ use OCP\BackgroundJob\IJobList;
 use OCP\IConfig;
 use OCP\IGroupManager;
 use OCP\IRequest;
+use OCP\ITempManager;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
@@ -40,7 +41,8 @@ class ApiController extends Controller {
         private IGroupManager $groupManager,
         private IConfig $config,
         private SecretRedactor $redactor,
-        private DeckIntegration $deck
+        private DeckIntegration $deck,
+        private ITempManager $tempManager
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -217,15 +219,19 @@ class ApiController extends Controller {
                     }
                     $mimeType = $this->validateUpload($file);
                     if ($mimeType instanceof JSONResponse) { return $mimeType; }
-                    // Move the uploaded file to a stable location since the
-                    // request's tmp file goes away when the request ends.
-                    $stable = sys_get_temp_dir() . '/audiolog_async_' . uniqid('', true) . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', $file['name']);
+                    // Move the upload to a stable, private location: the request's
+                    // tmp file (and ITempManager's per-request files) go away when
+                    // the request ends, and the job runs later from cron. Not named
+                    // oc_tmp_* so TempManager::cleanOld() can't drop it before the
+                    // job runs; ProcessAudioJob deletes it in `finally`.
+                    $stable = rtrim($this->tempManager->getTempBaseDir(), '/') . '/audiolog_async_' . bin2hex(random_bytes(16));
                     if (!@move_uploaded_file($file['tmp_name'], $stable)) {
                         // Fallback for environments where move_uploaded_file is restricted
                         if (!@copy($file['tmp_name'], $stable)) {
                             return new JSONResponse(['error' => 'Falha ao preparar arquivo para processamento assíncrono'], Http::STATUS_INTERNAL_SERVER_ERROR);
                         }
                     }
+                    @chmod($stable, 0600);
                     $job->setSourcePath($file['name']);
                     $argument['kind'] = 'process';
                     $argument['tmpPath'] = $stable;

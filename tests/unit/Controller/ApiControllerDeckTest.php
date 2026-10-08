@@ -37,6 +37,7 @@ class ApiControllerDeckTest extends TestCase {
             $this->createMock(JobMapper::class), $this->createMock(IJobList::class),
             $permissions, $this->createMock(IGroupManager::class), $config,
             new SecretRedactor($config, $crypto), $deck,
+            $this->createMock(\OCP\ITempManager::class),
         );
     }
 

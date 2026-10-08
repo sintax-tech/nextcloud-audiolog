@@ -71,6 +71,56 @@ final class TestHelpers {
             $deps['jobMapper'] ?? $mock(JobMapper::class),
             $deps['redactor'] ?? new SecretRedactor($config, $crypto),
             $deps['media'] ?? new \OCA\Audiolog\Service\MediaTools(),
+            $deps['tempManager'] ?? self::tempManager($tc, sys_get_temp_dir() . '/audiolog_tests_' . getmypid()),
         );
+    }
+
+    /**
+     * ITempManager mock that creates real 0600 files/folders under $dir, like
+     * OC\TempManager does, so tests can assert what is left behind.
+     */
+    public static function tempManager(TestCase $tc, string $dir): \OCP\ITempManager {
+        if (!is_dir($dir)) {
+            mkdir($dir, 0700, true);
+            register_shutdown_function([self::class, 'rmTree'], $dir);
+        }
+        $tm = (new \ReflectionMethod($tc, 'createMock'))->invoke($tc, \OCP\ITempManager::class);
+        $tm->method('getTemporaryFile')->willReturnCallback(function ($postFix = '') use ($dir) {
+            $f = tempnam($dir, 'oc_tmp_');
+            if ($postFix !== '') {
+                rename($f, $f . '-' . ltrim((string)$postFix, '.'));
+                $f .= '-' . ltrim((string)$postFix, '.');
+            }
+            chmod($f, 0600);
+            return $f;
+        });
+        $tm->method('getTemporaryFolder')->willReturnCallback(function ($postFix = '') use ($dir) {
+            $f = tempnam($dir, 'oc_tmp_');
+            unlink($f);
+            mkdir($f, 0700);
+            return $f . '/';
+        });
+        $tm->method('getTempBaseDir')->willReturn($dir);
+        return $tm;
+    }
+
+    /** Recursively list what is left under $dir. */
+    public static function leftovers(string $dir): array {
+        if (!is_dir($dir)) {
+            return [];
+        }
+        $out = [];
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($it as $f) {
+            $out[] = $f->getPathname();
+        }
+        return $out;
+    }
+
+    public static function rmTree(string $dir): void {
+        foreach (self::leftovers($dir) as $f) {
+            is_dir($f) ? @rmdir($f) : @unlink($f);
+        }
+        @rmdir($dir);
     }
 }

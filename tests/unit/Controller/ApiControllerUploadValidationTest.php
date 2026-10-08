@@ -54,6 +54,7 @@ class ApiControllerUploadValidationTest extends TestCase {
             $this->createMock(JobMapper::class), $this->createMock(IJobList::class),
             $permissions, $this->createMock(IGroupManager::class), $cfg,
             new SecretRedactor($cfg, $crypto), $this->createMock(DeckIntegration::class),
+            $this->createMock(\OCP\ITempManager::class),
         );
     }
 

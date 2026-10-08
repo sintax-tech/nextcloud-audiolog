@@ -75,12 +75,16 @@ class ProcessAudioJob extends QueuedJob {
                 $filename = (string)($argument['filename'] ?? 'upload.bin');
                 $mimeType = (string)($argument['mimeType'] ?? 'application/octet-stream');
                 if (!is_file($tmpPath)) {
-                    throw new \RuntimeException('Arquivo temporário não encontrado: ' . $tmpPath);
+                    throw new \RuntimeException('Arquivo temporário não encontrado');
                 }
-                $result = $this->audioService->processAudio(
-                    $tmpPath, $filename, $mimeType, $prompt, $outputTypes, $userId, $title
-                );
-                @unlink($tmpPath);
+                try {
+                    $result = $this->audioService->processAudio(
+                        $tmpPath, $filename, $mimeType, $prompt, $outputTypes, $userId, $title
+                    );
+                } finally {
+                    // The upload copy holds meeting audio: drop it, success or not.
+                    @unlink($tmpPath);
+                }
             }
 
             // The audioService recorded its own job entry; keep this top-level

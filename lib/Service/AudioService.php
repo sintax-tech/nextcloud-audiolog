@@ -12,6 +12,7 @@ use OCP\Http\Client\IClientService;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCP\IConfig;
+use OCP\ITempManager;
 use Psr\Log\LoggerInterface;
 
 // (CryptoHelper is in the same namespace, no use needed)
@@ -27,7 +28,8 @@ class AudioService {
         private CryptoHelper $crypto,
         private JobMapper $jobMapper,
         private SecretRedactor $redactor,
-        private MediaTools $media
+        private MediaTools $media,
+        private ITempManager $tempManager
     ) {
     }
 
@@ -892,9 +894,9 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         }
 
         // Probe duration. Need a temp file because ffprobe reads from disk.
-        $probeFile = tempnam(sys_get_temp_dir(), 'audiolog_probe_');
-        file_put_contents($probeFile, $audioContent);
+        $probeFile = $this->newTempFile();
         try {
+            file_put_contents($probeFile, $audioContent);
             $duration = $this->probeAudioDuration($probeFile);
         } finally {
             @unlink($probeFile);
@@ -952,14 +954,17 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         $chunkSeconds = max(60, $thresholdMin * 60 - 60); // chunk slightly smaller than threshold
         $overlapSeconds = 30.0;
 
-        $tmpDir = sys_get_temp_dir() . '/audiolog_split_' . uniqid('', true);
-        if (!@mkdir($tmpDir, 0700, true)) {
+        $tmpDir = $this->tempManager->getTemporaryFolder();
+        if (!is_string($tmpDir) || !is_dir($tmpDir)) {
             throw new \RuntimeException('Falha ao criar diretório temporário para split');
         }
+        $tmpDir = rtrim($tmpDir, '/');
+        @chmod($tmpDir, 0700);
         $sourcePath = $tmpDir . '/source.bin';
-        file_put_contents($sourcePath, $audioContent);
 
         try {
+            file_put_contents($sourcePath, $audioContent);
+            @chmod($sourcePath, 0600);
             $segments = [];
             $start = 0.0;
             $idx = 0;
@@ -1104,6 +1109,20 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
     }
 
     /**
+     * Private (0600) temp file from Nextcloud's ITempManager, which also
+     * removes it at the end of the request; callers still unlink it in
+     * `finally` so long jobs don't keep meeting audio around.
+     */
+    private function newTempFile(string $postFix = ''): string {
+        $file = $this->tempManager->getTemporaryFile($postFix);
+        if (!is_string($file) || $file === '') {
+            throw new \RuntimeException('Não foi possível criar arquivo temporário');
+        }
+        @chmod($file, 0600);
+        return $file;
+    }
+
+    /**
      * Refuse text playlists (m3u/HLS, ffconcat) named like media: ffmpeg would
      * follow the URLs inside them.
      */
@@ -1124,11 +1143,12 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
      * Extract audio from video file using ffmpeg
      */
     private function extractAudioFromVideo(string $videoPath): array {
-        $outputPath = sys_get_temp_dir() . '/audio_' . uniqid() . '.mp3';
+        $outputPath = $this->newTempFile('.mp3');
 
         [$returnCode, , $stderr] = $this->media->run($this->media->extractAudioCommand($videoPath, $outputPath));
 
-        if ($returnCode !== 0 || !file_exists($outputPath)) {
+        if ($returnCode !== 0 || !file_exists($outputPath) || filesize($outputPath) === 0) {
+            @unlink($outputPath);
             $this->logger->error('FFmpeg extraction failed: ' . substr($stderr, -2000));
             throw new \RuntimeException('Falha ao extrair áudio do vídeo. Verifique se ffmpeg está instalado.');
         }
@@ -1166,24 +1186,26 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
         }
         $this->assertNotPlaylist($audioContent);
 
-        // If it's a video, extract audio first
-        if ($this->isVideoFile($mimeType)) {
-            $this->logger->info("AssistAudio: Extracting audio from video file: {$filename}");
-            $extracted = $this->extractAudioFromVideo($tmpPath);
-            $audioContent = $extracted['content'];
-            $mimeType = $extracted['mimeType'];
-            $filename = pathinfo($filename, PATHINFO_FILENAME) . '.mp3';
-            $extractedAudioPath = $extracted['path'];
-        }
+        try {
+            // If it's a video, extract audio first
+            if ($this->isVideoFile($mimeType)) {
+                $this->logger->debug('Audiolog: extracting audio from uploaded video');
+                $extracted = $this->extractAudioFromVideo($tmpPath);
+                $audioContent = $extracted['content'];
+                $mimeType = $extracted['mimeType'];
+                $filename = pathinfo($filename, PATHINFO_FILENAME) . '.mp3';
+                $extractedAudioPath = $extracted['path'];
+            }
 
-        // Transcribe/process audio — but if it's a long audio AND we're using
-        // Gemini, route through the chunked map-reduce path so the model
-        // doesn't truncate.
-        $text = $this->transcribeWithLongAudioFallback($audioContent, $filename, $mimeType, $outputTypes, $prompt);
-
-        // Clean up extracted audio file
-        if ($extractedAudioPath && file_exists($extractedAudioPath)) {
-            unlink($extractedAudioPath);
+            // Transcribe/process audio — but if it's a long audio AND we're using
+            // Gemini, route through the chunked map-reduce path so the model
+            // doesn't truncate.
+            $text = $this->transcribeWithLongAudioFallback($audioContent, $filename, $mimeType, $outputTypes, $prompt);
+        } finally {
+            // Meeting audio must not linger in the temp dir, success or not.
+            if ($extractedAudioPath) {
+                @unlink($extractedAudioPath);
+            }
         }
 
         // Save audio file to user's files (if enabled)
@@ -1264,30 +1286,32 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             // Nextcloud derives the type from the extension: check the bytes.
             $this->assertNotPlaylist($audioContent);
 
-            // If it's a video, extract audio first
-            if ($this->isVideoFile($mimeType)) {
-                $this->logger->info("AssistAudio: Extracting audio from video file: {$filename}");
+            $tempVideoPath = null;
+            try {
+                // If it's a video, extract audio first
+                if ($this->isVideoFile($mimeType)) {
+                    $this->logger->debug('Audiolog: extracting audio from Nextcloud video');
 
-                // Save video to temp file for ffmpeg processing
-                $tempVideoPath = sys_get_temp_dir() . '/video_' . uniqid() . '.' . pathinfo($filename, PATHINFO_EXTENSION);
-                file_put_contents($tempVideoPath, $audioContent);
+                    // Save video to temp file for ffmpeg processing
+                    $tempVideoPath = $this->newTempFile('.' . (pathinfo($filename, PATHINFO_EXTENSION) ?: 'bin'));
+                    file_put_contents($tempVideoPath, $audioContent);
 
-                $extracted = $this->extractAudioFromVideo($tempVideoPath);
-                $audioContent = $extracted['content'];
-                $mimeType = $extracted['mimeType'];
-                $filename = pathinfo($filename, PATHINFO_FILENAME) . '.mp3';
-                $extractedAudioPath = $extracted['path'];
+                    $extracted = $this->extractAudioFromVideo($tempVideoPath);
+                    $audioContent = $extracted['content'];
+                    $mimeType = $extracted['mimeType'];
+                    $filename = pathinfo($filename, PATHINFO_FILENAME) . '.mp3';
+                    $extractedAudioPath = $extracted['path'];
+                }
 
-                // Clean up temp video
-                unlink($tempVideoPath);
-            }
-
-            // Transcribe/process audio — long-audio split is applied here too.
-            $text = $this->transcribeWithLongAudioFallback($audioContent, $filename, $mimeType, $outputTypes, $prompt);
-
-            // Clean up extracted audio file
-            if ($extractedAudioPath && file_exists($extractedAudioPath)) {
-                unlink($extractedAudioPath);
+                // Transcribe/process audio — long-audio split is applied here too.
+                $text = $this->transcribeWithLongAudioFallback($audioContent, $filename, $mimeType, $outputTypes, $prompt);
+            } finally {
+                // Meeting audio must not linger in the temp dir, success or not.
+                foreach ([$tempVideoPath, $extractedAudioPath] as $tmp) {
+                    if ($tmp) {
+                        @unlink($tmp);
+                    }
+                }
             }
 
             // Extract tasks if needed
@@ -2212,8 +2236,15 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
     private function generateDocx(string $title, string $content): string {
         // Create temporary file for the ZIP
-        $tempFile = tempnam(sys_get_temp_dir(), 'docx_');
+        $tempFile = $this->newTempFile('.docx');
+        try {
+            return $this->buildDocx($tempFile, $title, $content);
+        } finally {
+            @unlink($tempFile);
+        }
+    }
 
+    private function buildDocx(string $tempFile, string $title, string $content): string {
         $zip = new \ZipArchive();
         if ($zip->open($tempFile, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
             throw new \RuntimeException('Não foi possível criar arquivo DOCX');
@@ -2272,11 +2303,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
 
         $zip->close();
 
-        // Read the content and delete temp file
-        $docxContent = file_get_contents($tempFile);
-        unlink($tempFile);
-
-        return $docxContent;
+        return (string)file_get_contents($tempFile);
     }
 
     private function convertContentToDocxXml(string $title, string $content): string {

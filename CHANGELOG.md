@@ -15,6 +15,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The store description (English, Portuguese and Spanish) no longer says that live transcription with an external API key is restricted to admins: that option never existed. It now describes the server-side proxy and the per-user limit. The unused `realtime_stt_admin_only` setting is removed from the stored configuration on the next save of the admin settings.
 
 ### Fixed
+- Temporary copies of the audio (video extraction, duration probe, long-audio chunks, DOCX export, background-job uploads) are created through Nextcloud's `ITempManager` with `0600` permissions and deleted in every case. Before, they stayed in `/tmp` whenever the provider failed.
 - The admin's "maximum file size" setting is now enforced (it was saved but never checked), for uploads and for files picked from Nextcloud (HTTP 413). Uploaded files must be audio or video according to their content, not only to the type the browser declares (HTTP 415).
 - The Deck board picker lists every board the user can edit, including boards shared through a group or a circle, and no longer lists archived boards or boards the user can only read. Board titles are no longer written to the log.
 - Live transcription with Google Cloud Speech-to-Text never started ("Invalid configuration"): the page still expected the API key in the browser after the key moved to the server-side proxy.
