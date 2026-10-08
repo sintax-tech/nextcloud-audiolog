@@ -100,4 +100,46 @@ class MediaToolsTest extends TestCase {
             $this->assertSame('error', $argv[array_search('-loglevel', $argv, true) + 1]);
         }
     }
+
+    /**
+     * R2: only media demuxers may open the input; manifest/playlist demuxers
+     * (dash, hls, concat, sdp...) could read other users' files via file://.
+     */
+    public function testEveryCommandRestrictsDemuxers(): void {
+        foreach ([
+            $this->tools()->probeDurationCommand('/tmp/a.mp3'),
+            $this->tools()->sliceCommand('/tmp/a.mp3', 0.0, 10.0, '/tmp/b.mp3'),
+            $this->tools()->extractAudioCommand('/tmp/v.mp4', '/tmp/a.mp3'),
+        ] as $argv) {
+            $fw = array_search('-format_whitelist', $argv, true);
+            $this->assertNotFalse($fw, implode(' ', $argv));
+            $this->assertLessThan(array_search('-i', $argv, true), $fw);
+            $formats = explode(',', $argv[$fw + 1]);
+            foreach (['mov', 'matroska', 'webm', 'mp3', 'ogg', 'wav', 'flac', 'aac'] as $ok) {
+                $this->assertContains($ok, $formats);
+            }
+            foreach (['dash', 'webm_dash_manifest', 'hls', 'concat', 'sdp', 'image2', 'lavfi'] as $bad) {
+                $this->assertNotContains($bad, $formats);
+            }
+        }
+    }
+
+    /** @dataProvider manifests */
+    public function testXmlManifestsAreDetected(string $head): void {
+        $this->assertTrue($this->tools()->looksLikePlaylist($head));
+    }
+
+    public static function manifests(): array {
+        return [
+            'dash with prolog' => ["<?xml version=\"1.0\"?>\n<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\">"],
+            'dash bare' => ["  <MPD type=\"static\">"],
+            'smooth streaming' => ["<SmoothStreamingMedia MajorVersion=\"2\">"],
+        ];
+    }
+
+    public function testMediaContentIsSniffedFromBytes(): void {
+        $this->assertTrue($this->tools()->isMediaContent(TestHelpers::wavBytes()));
+        $this->assertFalse($this->tools()->isMediaContent("<?xml version=\"1.0\"?><MPD></MPD>"));
+        $this->assertFalse($this->tools()->isMediaContent("just some text\n"));
+    }
 }

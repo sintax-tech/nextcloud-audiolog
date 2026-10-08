@@ -1126,11 +1126,12 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
     }
 
     /**
-     * Refuse text playlists (m3u/HLS, ffconcat) named like media: ffmpeg would
-     * follow the URLs inside them.
+     * Refuse anything that is not real media by its bytes: playlists and
+     * manifests (m3u/HLS, ffconcat, DASH...) named like media would make
+     * ffmpeg follow the URLs or file:// paths inside them.
      */
-    private function assertNotPlaylist(string $content): void {
-        if ($this->media->looksLikePlaylist($content)) {
+    private function assertMediaContent(string $content): void {
+        if ($this->media->looksLikePlaylist($content) || !$this->media->isMediaContent($content)) {
             throw new InvalidInputException('O arquivo não é um áudio ou vídeo válido', 415);
         }
     }
@@ -1187,7 +1188,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
             ]);
             throw new \RuntimeException('Falha ao ler arquivo');
         }
-        $this->assertNotPlaylist($audioContent);
+        $this->assertMediaContent($audioContent);
 
         try {
             // If it's a video, extract audio first
@@ -1287,7 +1288,7 @@ Se houver tarefas, use EXATAMENTE este formato de tabela:
                 throw new InvalidInputException('O arquivo selecionado não é um arquivo de áudio ou vídeo', 415);
             }
             // Nextcloud derives the type from the extension: check the bytes.
-            $this->assertNotPlaylist($audioContent);
+            $this->assertMediaContent($audioContent);
 
             $tempVideoPath = null;
             try {

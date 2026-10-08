@@ -62,6 +62,7 @@ final class TestHelpers {
             return $c;
         })();
         $config = $deps['config'] ?? self::config($tc, ['max_jobs_per_user_per_day' => '0']);
+        $tempManager = $deps['tempManager'] ?? self::tempManager($tc, sys_get_temp_dir() . '/audiolog_tests_' . getmypid());
         return new AudioService(
             $deps['clientService'] ?? $mock(IClientService::class),
             $deps['rootFolder'] ?? $mock(IRootFolder::class),
@@ -70,7 +71,7 @@ final class TestHelpers {
             $crypto,
             $deps['jobMapper'] ?? $mock(JobMapper::class),
             $deps['redactor'] ?? new SecretRedactor($config, $crypto),
-            $deps['media'] ?? new \OCA\Audiolog\Service\MediaTools($tempManager = $deps['tempManager'] ?? self::tempManager($tc, sys_get_temp_dir() . '/audiolog_tests_' . getmypid())),
+            $deps['media'] ?? new \OCA\Audiolog\Service\MediaTools($tempManager),
             $tempManager,
         );
     }
