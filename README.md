@@ -38,8 +38,11 @@ The app deliberately keeps providers isolated: pick OpenAI and the app won't eve
 
 - API keys encrypted at rest with `OCP\Security\ICrypto` (`enc:v1:` prefix)
 - Per-group access control (`Allowed Groups` setting) — empty list means everyone, otherwise restricted
-- **Server-side STT proxy** for Google Cloud Speech-to-Text: the API key NEVER leaves the server, so any allowed-group user can use live transcription without leaking credentials
-- CSP locked to the active provider only — picking OpenAI removes Google domains from the allowed origins
+- **Server-side STT proxy** for Google Cloud Speech-to-Text: the API key NEVER leaves the server, so any allowed-group user can use live transcription without leaking credentials; Nextcloud's rate limiter caps it at 30 requests per minute per user
+- API keys travel in request headers (`x-goog-api-key`, `Authorization`), never in URLs, and provider error messages are masked before they reach the log, the job status or the browser
+- **Deck export** goes through Deck's own services: a card is only created on a board the user can edit
+- No provider origin in the page CSP: the browser only talks to Audiolog's own endpoints
+- Uploads are checked against the admin's maximum size and must be audio or video by content; `ffmpeg` only reads local files (`-protocol_whitelist file,pipe`) and playlists are refused
 - Path-traversal guard on every endpoint that accepts a user path
 - Web Speech API runs in the browser only, no key ever leaves the server
 - Generic error responses to clients; full stack traces stay in the server logs
@@ -94,8 +97,12 @@ js/audiolog-admin.js   ← admin form, provider switching
 js/audiolog-speaker-naming.js ← speaker name editing UI
 js/audiolog-sw.js      ← service worker (PWA)
 js/pcm-extractor-worklet.js ← AudioWorklet that extracts PCM for live STT
+js/audiolog-text-utils.js ← pure text helpers (unit-tested with Jest)
 lib/Controller/        ← Page, Api, Settings controllers
 lib/Service/AudioService.php       ← provider-specific audio processing
+lib/Service/DeckIntegration.php    ← Deck export through Deck's own services
+lib/Service/MediaTools.php         ← ffmpeg/ffprobe commands (argv, local protocols only)
+lib/Service/SecretRedactor.php     ← masks API keys in error messages
 lib/Service/PermissionService.php  ← group ACL
 lib/Service/CryptoHelper.php       ← API-key encryption wrapper
 lib/BackgroundJob/ProcessAudioJob.php  ← async pipeline
@@ -106,10 +113,14 @@ lib/Migration/         ← database schema
 ## Development
 
 ```bash
-make build        # produce build/appstore/audiolog-X.Y.Z.tar.gz
-make sign         # sign the tarball with your app store certificate
+composer install  # dev-only: PHPUnit + nextcloud/ocp into vendor/ (git-ignored, never shipped)
+npm install       # dev-only: Jest into node_modules/
+make test         # PHPUnit (php -d memory_limit=1G) + Jest, no Nextcloud checkout needed
 make lint         # php -l on every PHP file
-make test         # PHPUnit + Jest
+tools/l10n.py check   # every UI string present in en, pt_BR and es
+tools/l10n.py sync    # regenerate l10n/*.js from l10n/*.json
+make build        # build/appstore/audiolog-X.Y.Z.tar.gz from the committed HEAD (git archive), then check it
+make sign         # sign the tarball with your app store certificate
 make clean        # wipe build/
 ```
 
@@ -157,8 +168,11 @@ Os provedores são isolados: se você escolher OpenAI, o app **não chama Google
 
 - **Chaves de API criptografadas em repouso** com `OCP\Security\ICrypto`
 - **Controle por grupo** (configuração "Grupos Permitidos") — lista vazia libera todos, lista preenchida restringe
-- **Proxy STT server-side**: a chave do Google Cloud Speech-to-Text **nunca vai pro navegador** — qualquer usuário do grupo permitido pode usar transcrição ao vivo sem risco de vazar credenciais
-- **CSP dinâmico** baseado no provedor ativo: se o admin escolher OpenAI, domínios da Google nem são whitelistados
+- **Proxy STT server-side**: a chave do Google Cloud Speech-to-Text **nunca vai pro navegador** — qualquer usuário do grupo permitido pode usar transcrição ao vivo sem risco de vazar credenciais; o limitador do Nextcloud permite até 30 requisições por minuto por usuário
+- **Chaves nos headers** (`x-goog-api-key`, `Authorization`), nunca na URL, e mensagens de erro dos provedores mascaradas antes de ir para o log, o status do job ou o navegador
+- **Exportação para o Deck** pelos serviços do próprio Deck: o cartão só é criado em quadro que o usuário pode editar
+- **CSP sem provedores**: o navegador só fala com os endpoints do próprio Audiolog
+- **Uploads** conferidos contra o tamanho máximo do admin e pelo conteúdo (áudio ou vídeo); o `ffmpeg` só lê arquivos locais (`-protocol_whitelist file,pipe`) e playlists são recusadas
 - **Proteção contra path traversal** em todos os endpoints que aceitam caminhos do usuário
 - **Web Speech API** roda 100% no navegador, sem chave envolvida
 - **Mensagens de erro genéricas** ao cliente; stack traces ficam só nos logs do servidor
@@ -193,10 +207,14 @@ O botão de **healthcheck** valida ffmpeg, ffprobe, extensões PHP, espaço em d
 ### Desenvolvimento
 
 ```bash
-make build        # gera build/appstore/audiolog-X.Y.Z.tar.gz
-make sign         # assina o tarball com o certificado da loja
+composer install  # só desenvolvimento: PHPUnit + nextcloud/ocp em vendor/ (fora do git e do pacote)
+npm install       # só desenvolvimento: Jest em node_modules/
+make test         # PHPUnit (php -d memory_limit=1G) + Jest, sem precisar de checkout do Nextcloud
 make lint         # php -l em todos os arquivos PHP
-make test         # PHPUnit + Jest
+tools/l10n.py check   # toda string da interface em en, pt_BR e es
+tools/l10n.py sync    # regera l10n/*.js a partir de l10n/*.json
+make build        # gera build/appstore/audiolog-X.Y.Z.tar.gz do HEAD commitado (git archive) e confere o pacote
+make sign         # assina o tarball com o certificado da loja
 make clean        # apaga build/
 ```
 
