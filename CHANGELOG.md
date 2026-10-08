@@ -3,6 +3,15 @@
 All notable changes to Audiolog are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+- SPDX headers and REUSE metadata, full license texts, NOTICE with the AGPL section 7(b) attribution term, and third-party credits.
+- Localized Sintax attribution in the administration page (English, Portuguese and Spanish).
+
+### Changed
+- App metadata declares AGPL-3.0-or-later; packages include NOTICE, THIRD-PARTY-NOTICES.md and LICENSES/.
+
 ## 1.0.5 - 2026-10-08
 
 ### Security

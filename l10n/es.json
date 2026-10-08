@@ -368,7 +368,8 @@
     "Formato de áudio ou vídeo não suportado. Formatos aceitos: %s.": "Formato de audio o vídeo no admitido. Formatos aceptados: %s.",
     "Não foi possível extrair o áudio do vídeo.": "No se pudo extraer el audio del vídeo.",
     "(parte não entendível)": "(parte ininteligible)",
-    "(nomeado)": "(con nombres)"
+    "(nomeado)": "(con nombres)",
+    "Desenvolvido pela Sintax": "Desarrollado por Sintax"
   },
   "pluralForm": "nplurals=2; plural=(n != 1);"
 }

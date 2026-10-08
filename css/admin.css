@@ -344,3 +344,9 @@
     color: #e74c3c;
     margin: 0;
 }
+
+#audiolog-admin .audiolog-attribution {
+    margin-top: 24px;
+    font-size: 13px;
+    color: var(--color-text-maxcontrast);
+}

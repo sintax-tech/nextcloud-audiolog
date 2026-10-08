@@ -370,6 +370,7 @@ OC.L10N.register(
         "Não foi possível extrair o áudio do vídeo.": "No se pudo extraer el audio del vídeo.",
         "(parte não entendível)": "(parte ininteligible)",
         "(nomeado)": "(con nombres)",
+        "Desenvolvido pela Sintax": "Desarrollado por Sintax",
     },
     "nplurals=2; plural=(n != 1);"
 );

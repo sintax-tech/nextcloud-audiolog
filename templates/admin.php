@@ -260,4 +260,7 @@ $icons = [
 
         <div id="settings-status" class="settings-status" style="display:none"></div>
     </form>
+    <footer class="audiolog-attribution">
+        <?php p($l->t('Desenvolvido pela Sintax')); ?> · <a href="https://sintax.tech">sintax.tech</a>
+    </footer>
 </div>
