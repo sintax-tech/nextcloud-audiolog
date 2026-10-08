@@ -10,7 +10,9 @@ generated from them in the format Nextcloud loads (OC.L10N.register).
                          are out of date, or lib/ hands the user a literal
                          text without IL10N ('error'/'message'/'note' => '...',
                          new InvalidInputException('...')); internal-only
-                         lines carry "// l10n-ignore"
+                         lines carry "// l10n-ignore"; and a js/ string
+                         literal with a Portuguese accented letter outside
+                         t() (heuristic; comments and console.* skipped)
   tools/l10n.py unused   list keys no source file uses
 """
 import json
@@ -85,9 +87,29 @@ def untranslated_literals() -> list:
     return found
 
 
+T_CALL = re.compile(r"""\b[tn]\(\s*['"]audiolog['"]\s*,\s*(?P<q>['"])(?:\\.|(?!(?P=q)).)*(?P=q)""", re.S)
+JS_LITERAL = re.compile(r"""(?P<q>['"`])(?P<s>(?:\\.|(?!(?P=q)).)*?)(?P=q)""")
+PT_LETTER = re.compile(r'[ãõçáéíóúâêôàÃÕÇÁÉÍÓÚÂÊÔ]')
+
+
+def js_portuguese_literals() -> list:
+    found = []
+    for f in sorted((ROOT / 'js').glob('*.js')):
+        text = T_CALL.sub(lambda m: '\n' * m.group(0).count('\n') + 't()', f.read_text(encoding='utf-8'))
+        for n, line in enumerate(text.split('\n'), 1):
+            st = line.lstrip()
+            if st.startswith(('//', '*', '/*')) or 'console.' in line:
+                continue
+            code = re.sub(r'\s//.*$', '', line)
+            for m in JS_LITERAL.finditer(code):
+                if PT_LETTER.search(m.group('s')):
+                    found.append(f'{f.relative_to(ROOT)}:{n}: Portuguese text outside t(): {m.group(0)[:80]}')
+    return found
+
+
 def check() -> int:
     used = used_strings()
-    problems = untranslated_literals()
+    problems = untranslated_literals() + js_portuguese_literals()
     for lang in LANGS:
         data = load(lang)
         tr = data['translations']

@@ -96,4 +96,36 @@ class L10nCompletenessTest extends TestCase {
         }
         $this->assertSame([], $offenders);
     }
+
+    /**
+     * N5: Portuguese text in the page scripts must go through t(). Heuristic:
+     * a string literal with a Portuguese accented letter, outside t() calls
+     * (removed first, even when split over lines), comments and console.*.
+     */
+    public function testNoPortugueseLiteralsOutsideTInJs(): void {
+        $offenders = [];
+        foreach (glob($this->root() . '/js/*.js') as $file) {
+            $src = file_get_contents($file);
+            // Blank out t('audiolog', '...') / n(...) keeping the line count.
+            $src = preg_replace_callback(
+                '/\b[tn]\(\s*[\'"]audiolog[\'"]\s*,\s*(?<q>[\'"])(?:\\\\.|(?!\k<q>).)*\k<q>/s',
+                fn ($m) => str_repeat("\n", substr_count($m[0], "\n")) . 't()',
+                $src
+            );
+            foreach (explode("\n", $src) as $n => $line) {
+                $trim = ltrim($line);
+                if (str_starts_with($trim, '//') || str_starts_with($trim, '*') || str_starts_with($trim, '/*') || str_contains($line, 'console.')) {
+                    continue;
+                }
+                $code = preg_replace('#\s//.*$#', '', $line);
+                preg_match_all('/([\'"`])((?:\\\\.|(?!\1).)*?)\1/u', $code, $m);
+                foreach ($m[2] as $literal) {
+                    if (preg_match('/[ãõçáéíóúâêôàÃÕÇÁÉÍÓÚÂÊÔ]/u', $literal)) {
+                        $offenders[] = basename($file) . ':' . ($n + 1) . ' ' . $literal;
+                    }
+                }
+            }
+        }
+        $this->assertSame([], $offenders);
+    }
 }

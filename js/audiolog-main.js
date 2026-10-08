@@ -1266,7 +1266,7 @@
         // Nextcloud-file paths so the workflow is uniform.
         if (window.AudiologSpeakerNaming && result.text && /\[Falante\s+\d+\]/i.test(result.text)) {
             const audioPath = result.audioPath || result.sourceFile || '';
-            const title = (result.title || elements.audioTitle?.value || '').trim() || 'Transcrição';
+            const title = (result.title || elements.audioTitle?.value || '').trim() || t('audiolog', 'Transcrição');
             // Defer one tick so the result is painted first; the user sees the
             // transcript briefly, then the naming form pops in.
             setTimeout(() => {
@@ -2850,7 +2850,7 @@
             }
         }
         if (letters > 0 && nonLatin / letters > 0.4) {
-            return ' (parte não entendível) ';
+            return ' ' + t('audiolog', '(parte não entendível)') + ' ';
         }
         return text;
     }

@@ -368,6 +368,8 @@ OC.L10N.register(
         "A extração do áudio excedeu o tempo limite.": "La extracción del audio superó el tiempo límite.",
         "Formato de áudio ou vídeo não suportado. Formatos aceitos: %s.": "Formato de audio o vídeo no admitido. Formatos aceptados: %s.",
         "Não foi possível extrair o áudio do vídeo.": "No se pudo extraer el audio del vídeo.",
+        "(parte não entendível)": "(parte ininteligible)",
+        "(nomeado)": "(con nombres)",
     },
     "nplurals=2; plural=(n != 1);"
 );
