@@ -1,105 +1,103 @@
-# Publishing Audiolog on the Nextcloud App Store
+# Publishing Audiolog
 
-End-to-end checklist for the first release. Follow once; subsequent releases just need `make build && upload + sign`.
-
-## 1. One-time setup
-
-### Create a public git repository
-
-The store expects a public git repo. The `<repository>`, `<website>` and `<bugs>` URLs in `appinfo/info.xml` already point at:
+Release workflow for Audiolog. The app store does not host the tarball: it downloads it from the raw GitHub URL of the file committed under `dist/` on `main`:
 
 ```
-https://github.com/sintax-tech/nextcloud-audiolog
+https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/dist/audiolog-<version>.tar.gz
 ```
 
-If you use a different host/org, update those three tags in `appinfo/info.xml` and the install URL in `README.md` before pushing.
+## Release steps
 
-```bash
-cd /path/to/audiolog
-git init
-git add .
-git commit -m "Initial public release — Audiolog 1.0.0"
-git branch -M main
-git remote add origin git@github.com:sintax-tech/nextcloud-audiolog.git
-git push -u origin main
+Replace `X.Y.Z` with the new version.
+
+1. **Bump the version** in `appinfo/info.xml` (`<version>X.Y.Z</version>`). If the supported Nextcloud range changes, update `<nextcloud min-version=... max-version=...>` and the range in `README.md` as well. Add an entry to `CHANGELOG.md`.
+2. **Build the tarball:**
+   ```bash
+   make build
+   # → build/appstore/audiolog-X.Y.Z.tar.gz
+   ```
+   The Makefile runs `tar` with `COPYFILE_DISABLE=1` and `--exclude='._*'`, so macOS does not add AppleDouble files.
+3. **Check the tarball** with Python's `tarfile`. It must have:
+   - exactly one top-level directory, `audiolog/`;
+   - no `._*` entries and no `.DS_Store`;
+   - no `tests/`, `build/` or `dist/` inside;
+   - `<version>X.Y.Z</version>` in the inner `appinfo/info.xml`.
+   ```bash
+   python3 - <<'PY'
+   import tarfile
+   t = tarfile.open('build/appstore/audiolog-X.Y.Z.tar.gz')
+   n = t.getnames()
+   print({x.split('/')[0] for x in n})
+   print([x for x in n if '._' in x or '.DS_Store' in x])
+   print([x for x in n if x.split('/')[1:2] in (['tests'], ['build'], ['dist'])])
+   print(b'<version>X.Y.Z</version>' in t.extractfile('audiolog/appinfo/info.xml').read())
+   PY
+   ```
+4. **Sign:**
+   ```bash
+   make sign
+   # → build/sign/audiolog-X.Y.Z.sig (base64), also printed on screen
+   ```
+   It uses `~/.nextcloud/certificates/audiolog.key`. Never copy or print that key. To check the signature against the certificate:
+   ```bash
+   openssl x509 -in ~/.nextcloud/certificates/audiolog.crt -pubkey -noout > /tmp/audiolog-pub.pem
+   openssl base64 -d -in build/sign/audiolog-X.Y.Z.sig -out /tmp/audiolog.sig.bin
+   openssl dgst -sha512 -verify /tmp/audiolog-pub.pem -signature /tmp/audiolog.sig.bin build/appstore/audiolog-X.Y.Z.tar.gz
+   ```
+5. **Copy the tarball to `dist/`:**
+   ```bash
+   cp build/appstore/audiolog-X.Y.Z.tar.gz dist/
+   ```
+6. **Commit and push to `main`** (version bump, `dist/` tarball, README and CHANGELOG):
+   ```bash
+   git add appinfo/info.xml README.md CHANGELOG.md dist/audiolog-X.Y.Z.tar.gz
+   git commit -m "X.Y.Z: <summary>"
+   git push origin main
+   ```
+7. **Tag the release** and push the tag:
+   ```bash
+   git tag vX.Y.Z && git push origin vX.Y.Z
+   ```
+   The tag convention is `vX.Y.Z` (for example `v1.0.3`). `v.1.0.0` was a historical exception.
+8. **Check the raw URL.** Download it and compare the sha256 and the signature with the local file:
+   ```bash
+   curl -sL https://raw.githubusercontent.com/sintax-tech/nextcloud-audiolog/main/dist/audiolog-X.Y.Z.tar.gz -o /tmp/dl.tar.gz
+   shasum -a 256 /tmp/dl.tar.gz dist/audiolog-X.Y.Z.tar.gz
+   ```
+9. **Upload the release on <https://apps.nextcloud.com>:** app page → Releases → Upload new release.
+   - **Download URL:** the raw URL above.
+   - **Signature:** the contents of `build/sign/audiolog-X.Y.Z.sig`.
+   - **Nightly / pre-release:** leave unchecked.
+
+## Watch out for macOS `._*` files
+
+Without `COPYFILE_DISABLE=1`, the macOS `tar` adds AppleDouble files (`._*`) to the tarball. They broke the Nextcloud updater, which tried to handle `apps/._audiolog` as an app directory. This was fixed in 1.0.2 and is why the Makefile sets `COPYFILE_DISABLE=1` and `--exclude='._*'`. Always run the tarball check in step 3.
+
+## Known caveat: `info.xml` and the XSD
+
+Validating `appinfo/info.xml` with `xmllint --noout --schema https://apps.nextcloud.com/schema/apps/info.xsd appinfo/info.xml` fails because the `<settings>` element comes after `<navigations>`, which is not the order the XSD expects. The app store accepts the file anyway (1.0.2 and 1.0.3 were accepted). Reordering it is pending.
+
+## Screenshots
+
+The store requires at least one. They live in `docs/screenshots/` and are referenced by `info.xml` through raw GitHub URLs on `main`:
+
+```
+docs/screenshots/01-record.png
+docs/screenshots/02-live-running.png
+docs/screenshots/03-recordings.png
+docs/screenshots/04-live-setup.png
 ```
 
-### Request an app certificate
+## One-time setup (done)
 
-The Nextcloud team signs your app's first tarball, then you sign every subsequent release with that key. Open an issue at <https://github.com/nextcloud/app-certificate-requests> and they'll mail back two files:
+These steps were already done for the first release and are kept for reference.
 
-- `~/.nextcloud/certificates/audiolog.crt` (public)
-- `~/.nextcloud/certificates/audiolog.key` (private — keep this safe)
-
-### Create the screenshots
-
-The store requires at least one. Place under `docs/screenshots/`:
-
-```
-docs/screenshots/01-record.png    ← Nova Gravação (main page)
-docs/screenshots/02-live.png      ← Live transcription in progress
-docs/screenshots/03-result.png    ← Result with diarization + tasks
-docs/screenshots/04-admin.png     ← Admin settings
-```
-
-PNG, 16:9, ≥ 1200px wide. The URLs in `info.xml` resolve to these once you push to `main`.
-
-### Register on the store
-
-1. Go to <https://apps.nextcloud.com>
-2. Sign in with your Nextcloud forum account
-3. Top-right menu → "Register new app"
-4. App ID: `audiolog`
-
-## 2. Build a release
-
-```bash
-make build
-# → build/appstore/audiolog-1.0.0.tar.gz
-```
-
-The tarball must:
-- contain exactly one top-level directory named `audiolog/`
-- include `appinfo/info.xml` with the matching `<version>`
-- exclude dev artefacts (handled by the Makefile's `--exclude` rules)
-
-## 3. Sign and submit
-
-```bash
-make sign
-# Prints the base64 signature
-```
-
-Then on apps.nextcloud.com:
-
-1. Open the app page → "Releases" → "Upload new release"
-2. **Download URL**: a stable HTTPS URL where the tarball lives. Two common choices:
-   - GitHub release assets: `https://github.com/sintax-tech/nextcloud-audiolog/releases/download/v.1.0.0/audiolog-1.0.0.tar.gz`
-   - Your own server: `https://nextcloud-audiolog.sintax.tech/audiolog-1.0.0.tar.gz`
-3. **Signature**: paste the output of `make sign`
-4. **Nightly / pre-release**: leave unchecked for `1.0.0`
-
-The store fetches the URL, verifies the signature against your registered certificate, and runs an automated lint pass. Approval is usually within a few hours.
-
-## 4. After approval
-
-Anyone can now install with:
-
-```
-occ app:install audiolog
-```
-
-or via the Nextcloud admin UI → Apps → search for "Audiolog".
-
-## Subsequent releases
-
-1. Bump `<version>` in `appinfo/info.xml`
-2. Tag the release: `git tag v1.0.1 && git push --tags`
-3. Create a GitHub release, attach `make build` output as the asset
-4. `make sign` and paste signature into the app store form
+- **Public repository:** `https://github.com/sintax-tech/nextcloud-audiolog`. The `<repository>`, `<website>` and `<bugs>` tags in `info.xml` point to it.
+- **App certificate:** requested through <https://github.com/nextcloud/app-certificate-requests>. The files `~/.nextcloud/certificates/audiolog.crt` (public) and `~/.nextcloud/certificates/audiolog.key` (private, keep it safe) are used by `make sign`.
+- **App registration:** the app `audiolog` is registered on <https://apps.nextcloud.com>.
 
 ## Troubleshooting
 
-- **"Certificate validation failed"** — your `audiolog.crt` doesn't match the signature. Rebuild from scratch (`make clean build sign`) and verify the certificate path in the Makefile.
-- **"info.xml schema validation failed"** — run `xmllint --schema https://apps.nextcloud.com/schema/apps/info.xsd appinfo/info.xml`.
-- **"Tarball must contain exactly one directory"** — if the build/ output looks wrong, `make clean` and rebuild.
+- **"Certificate validation failed"**: the certificate does not match the signature. Rebuild everything (`make clean build sign`), check that you uploaded the file from the raw URL, and check the certificate path in the Makefile.
+- **"info.xml schema validation failed"**: see the XSD caveat above; compare against the previous accepted version.
+- **"Tarball must contain exactly one directory"**: run `make clean` and rebuild, then run the tarball check (macOS `._*` files are the usual cause).
