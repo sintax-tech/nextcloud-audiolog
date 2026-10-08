@@ -3073,7 +3073,9 @@
         if (liveStatus) liveStatus.textContent = t('audiolog', 'Conectando...');
 
         const cfg = streamOpts._cfg;
-        if (!cfg || cfg.provider !== 'google-stt' || !cfg.apiKey) {
+        // The key stays on the server (/api/stt/recognize proxies it), so the
+        // config carries no apiKey: only the provider is checked here.
+        if (!cfg || cfg.provider !== 'google-stt') {
             if (liveStatus) liveStatus.textContent = t('audiolog', 'Configuração inválida');
             return;
         }
