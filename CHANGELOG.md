@@ -14,10 +14,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - The store description (English, Portuguese and Spanish) no longer says that live transcription with an external API key is restricted to admins: that option never existed. It now describes the server-side proxy and the per-user limit. The unused `realtime_stt_admin_only` setting is removed from the stored configuration on the next save of the admin settings.
 
+- The page no longer adds Gemini, OpenAI, Google Speech or the Ollama URL to its Content Security Policy: the browser never calls a provider directly (everything goes through Audiolog's own endpoints), and the internal Ollama address no longer appears in a response header.
+
 ### Removed
 - Dead code: the Gemini Live WebSocket client in the page script (about 230 lines that nothing called; `gemini-live` already fell back to Web Speech), the unrouted `ncFile` endpoint method, `getTaskStatus`, `findStaleRunning`, and the unused `realtime_stt_model` setting (removed from the stored configuration on the next save).
 
 ### Fixed
+- Users outside the allowed groups now get a translated "Access denied" page (HTTP 403) instead of the app interface, whose actions all failed.
 - "Test connection" and the healthcheck now use Nextcloud's HTTP client, like the processing itself. Before, they used raw cURL and reported "OK" for a local Ollama that the processing could not reach, because Nextcloud blocks local addresses unless `allow_local_remote_servers` is enabled. The blocked case now shows that setting, and the README documents it. This also removes `curl_close()`, deprecated in PHP 8.5.
 - Temporary copies of the audio (video extraction, duration probe, long-audio chunks, DOCX export, background-job uploads) are created through Nextcloud's `ITempManager` with `0600` permissions and deleted in every case. Before, they stayed in `/tmp` whenever the provider failed.
 - Task extraction (for Deck export) only reads the task table the prompt asks for, or a bullet list under a tasks heading. Before, any three-column table of the minutes (participants, for example) became tasks, and bullet tasks such as "- Send report - Owner: Ana" were dropped.

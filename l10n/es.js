@@ -195,6 +195,9 @@ OC.L10N.register(
         "Web Speech API não suportada neste navegador. Use Chrome ou Edge, ou troque o provedor no admin.": "",
         "Web Speech usa o motor do Google em modo streaming nativo do navegador — qualidade alta sem custo de API, sem expor chave ao usuário. Gemini Live e Google STT exigem chave; usam a chave configurada acima (e a chave dedicada de Google STT, quando preenchida).": "",
         "Ambos os provedores funcionam para qualquer usuário do grupo permitido sem expor a chave de API: Web Speech roda inteiramente no browser; Google STT é proxied pelo servidor (a chave fica em segurança no Nextcloud).": "",
+        "Acesso negado": "Acceso denegado",
+        "Você não tem permissão para usar o Audiolog.": "No tiene permiso para usar Audiolog.",
+        "Fale com o administrador se precisar de acesso.": "Contacte con el administrador si necesita acceso.",
     },
     "nplurals=2; plural=(n != 1);"
 );
