@@ -30,7 +30,7 @@ version=$(shell xmllint --xpath "string(/info/version)" appinfo/info.xml 2>/dev/
 # from HEAD. Untracked or ignored files (.remember/, .DS_Store, ._*, vendor/,
 # node_modules/, build/, dist/) can never end up in the tarball, and the
 # result is checked by tools/check-tarball.py before signing.
-ship_paths=appinfo lib templates js css img l10n LICENSE CHANGELOG.md README.md
+ship_paths=appinfo lib templates js css img l10n LICENSE NOTICE THIRD-PARTY-NOTICES.md LICENSES REUSE.toml CHANGELOG.md README.md
 
 .PHONY: all
 all: build

@@ -22,7 +22,17 @@ FORBIDDEN_FILES = {
     '.DS_Store', '.gitignore', '.gitattributes', 'Makefile', 'PUBLISHING.md',
     'composer.json', 'composer.lock', 'package.json', 'package-lock.json',
 }
-REQUIRED = ['audiolog/appinfo/info.xml', 'audiolog/appinfo/routes.php', 'audiolog/lib/AppInfo/Application.php']
+REQUIRED = [
+    'audiolog/appinfo/info.xml',
+    'audiolog/appinfo/routes.php',
+    'audiolog/lib/AppInfo/Application.php',
+    'audiolog/LICENSE',
+    'audiolog/NOTICE',
+    'audiolog/THIRD-PARTY-NOTICES.md',
+    'audiolog/REUSE.toml',
+    'audiolog/LICENSES/AGPL-3.0-or-later.txt',
+    'audiolog/LICENSES/Apache-2.0.txt',
+]
 
 
 def main() -> int:
