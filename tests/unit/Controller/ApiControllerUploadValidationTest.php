@@ -96,4 +96,16 @@ class ApiControllerUploadValidationTest extends TestCase {
             ->willReturn(['success' => true]);
         $this->controller(TestHelpers::wavBytes(), 'application/octet-stream', [], $audio)->process();
     }
+
+    /**
+     * R3: max_file_size protects processing (memory, AI cost), not storing the
+     * user's own recording: a 2-hour meeting must still be saved.
+     */
+    public function testSaveRecordingAboveMaxFileSizeIsStillSaved(): void {
+        $audio = $this->createMock(AudioService::class);
+        $audio->expects($this->once())->method('saveRecording')->willReturn(['success' => true, 'path' => 'Audiolog/x.wav']);
+        $big = TestHelpers::wavBytes(700 * 1024); // ~1.4 MB
+        $response = $this->controller($big, 'audio/wav', ['max_file_size' => '1'], $audio)->saveRecording();
+        $this->assertSame(200, $response->getStatus());
+    }
 }

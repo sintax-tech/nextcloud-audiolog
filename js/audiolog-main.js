@@ -107,6 +107,48 @@
             tx.onerror = () => reject(tx.error);
         });
     }
+    /**
+     * Store a finished recording (single blob) as a completed IndexedDB entry,
+     * the same shape the recorder writes, so the recovery prompt can offer it.
+     * Returns false when IndexedDB is unavailable.
+     */
+    async function keepRecordingLocally(blob, title, mimeType) {
+        try {
+            const id = uuid();
+            const now = Date.now();
+            await dbPut(STORE_RECORDINGS, {
+                id: id,
+                title: title,
+                mimeType: mimeType || blob.type || 'audio/webm',
+                deviceLabel: '',
+                source: 'live',
+                startedAt: now,
+                endedAt: now,
+                // 'interrupted' is what the recovery prompt offers.
+                status: 'interrupted',
+                chunkCount: 1,
+                bytes: blob.size
+            });
+            await dbPut(STORE_CHUNKS, { recordingId: id, seq: 0, blob: blob });
+            return true;
+        } catch (err) {
+            console.error('[Audiolog IDB] could not keep live recording locally:', err);
+            return false;
+        }
+    }
+
+    /** A finished recording that did not reach the server goes back to the recovery prompt. */
+    async function markRecordingUnsent(recordingId) {
+        if (!recordingId) return;
+        try {
+            const rec = await dbGet(STORE_RECORDINGS, recordingId);
+            if (rec) {
+                rec.status = 'interrupted';
+                await dbPut(STORE_RECORDINGS, rec);
+            }
+        } catch (_) { /* IndexedDB unavailable: nothing more we can do */ }
+    }
+
     async function cleanupOldRecordings() {
         try {
             const all = await dbGetAll(STORE_RECORDINGS);
@@ -898,10 +940,15 @@
                          }
                     } else {
                          console.error('Erro ao salvar gravacao:', result.error);
-                         showNotification(t('audiolog', 'Falha ao enviar — gravação preservada localmente.'), 'error');
+                         await markRecordingUnsent(finishedId);
+                         // Show the server's reason (size, type...) — the audio
+                         // stays in IndexedDB for the recovery prompt.
+                         showNotification(t('audiolog', 'Falha ao enviar — gravação preservada localmente.')
+                             + (result && result.error ? ' ' + result.error : ''), 'error');
                     }
                 } catch (saveErr) {
                     console.error('Erro ao enviar gravacao:', saveErr);
+                    await markRecordingUnsent(finishedId);
                     showNotification(t('audiolog', 'Falha ao enviar — gravação preservada localmente.'), 'error');
                 }
 
@@ -3066,6 +3113,7 @@
 
         // 2) Save the audio so the project folder exists.
         let savedAudioPath = '';
+        let saveError = '';
         if (liveAudioBlob && liveAudioBlob.size > 1024) {
             try {
                 const ext = (liveAudioMime || '').includes('webm') ? 'webm'
@@ -3080,10 +3128,27 @@
                 const resp = await fetch(OC.generateUrl('/apps/audiolog/api/save-recording'), {
                     method: 'POST', body: fd, headers: { 'requesttoken': OC.requestToken }
                 });
-                const r = await resp.json();
-                if (r && !r.error) savedAudioPath = r.path || '';
+                const r = await resp.json().catch(() => ({ error: 'HTTP ' + resp.status }));
+                if (r && !r.error) {
+                    savedAudioPath = r.path || '';
+                } else {
+                    saveError = (r && r.error) || ('HTTP ' + resp.status);
+                }
             } catch (e) {
                 console.warn('[live] Save live audio failed:', e);
+                saveError = e.message || String(e);
+            }
+            if (!savedAudioPath) {
+                // Never lose the meeting audio: keep it in IndexedDB so the
+                // recovery prompt offers it on the next visit.
+                const kept = await keepRecordingLocally(liveAudioBlob, title, liveAudioMime);
+                showNotification(
+                    (kept
+                        ? t('audiolog', 'Falha ao enviar — gravação preservada localmente.')
+                        : t('audiolog', 'Falha ao salvar o áudio da transcrição ao vivo.'))
+                    + (saveError ? ' ' + saveError : ''),
+                    'error'
+                );
             }
         }
 

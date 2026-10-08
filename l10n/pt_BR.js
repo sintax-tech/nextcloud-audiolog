@@ -283,6 +283,7 @@ OC.L10N.register(
         "whisper-1 para transcrição, gpt-4o para análise avançada": "whisper-1 para transcrição, gpt-4o para análise avançada",
         "Áudio do sistema não detectado. Certifique-se de marcar \"Compartilhar áudio do sistema\" ao selecionar a tela.": "Áudio do sistema não detectado. Certifique-se de marcar \"Compartilhar áudio do sistema\" ao selecionar a tela.",
         "Áudio do sistema não detectado. Marque \"Compartilhar áudio do sistema\" ao selecionar a tela.": "Áudio do sistema não detectado. Marque \"Compartilhar áudio do sistema\" ao selecionar a tela.",
+        "Falha ao salvar o áudio da transcrição ao vivo.": "Falha ao salvar o áudio da transcrição ao vivo.",
     },
     "nplurals=2; plural=(n > 1);"
 );

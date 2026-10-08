@@ -131,20 +131,22 @@ class ApiController extends Controller {
     }
 
     /**
-     * Validate an uploaded audio/video file: size against the admin's
-     * `max_file_size` (MB, 0 = unlimited) and type detected from the bytes
-     * with finfo (the client-sent type is not trusted).
+     * Validate an uploaded audio/video file: type detected from the bytes
+     * with finfo (the client-sent type is not trusted) and, when
+     * $enforceMaxSize, size against the admin's `max_file_size` (MB,
+     * 0 = unlimited). The size cap protects processing (memory, AI cost); it
+     * is not applied when the user just stores their own recording.
      *
      * Returns the MIME type to process the file with, or the error response.
      */
-    private function validateUpload(array $file): JSONResponse|string {
+    private function validateUpload(array $file, bool $enforceMaxSize = true): JSONResponse|string {
         $tmp = (string)($file['tmp_name'] ?? '');
         $size = is_file($tmp) ? (int)filesize($tmp) : 0;
         if ($size <= 0) {
             return new JSONResponse(['error' => 'Arquivo de áudio vazio ou ilegível'], Http::STATUS_BAD_REQUEST);
         }
         $maxMb = (int)$this->config->getAppValue(Application::APP_ID, 'max_file_size', '100');
-        if ($maxMb > 0 && $size > $maxMb * 1024 * 1024) {
+        if ($enforceMaxSize && $maxMb > 0 && $size > $maxMb * 1024 * 1024) {
             return new JSONResponse(
                 ['error' => 'O arquivo excede o tamanho máximo de ' . $maxMb . ' MB'],
                 Http::STATUS_REQUEST_ENTITY_TOO_LARGE
@@ -449,7 +451,7 @@ class ApiController extends Controller {
             if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
                 return new JSONResponse(['error' => 'Arquivo de audio nao fornecido'], Http::STATUS_BAD_REQUEST);
             }
-            $mimeType = $this->validateUpload($file);
+            $mimeType = $this->validateUpload($file, false);
             if ($mimeType instanceof JSONResponse) { return $mimeType; }
 
             $title = $this->request->getParam('title', '');
